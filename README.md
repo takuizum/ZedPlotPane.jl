@@ -1,8 +1,27 @@
 # ZedPlotPane.jl
 
-`ZedPlotPane.jl` is the Julia-side library for Zed plot-pane integration.
-It installs a custom display that writes plot output to `~/.cache/zed-julia/current-plot.png`
-and keeps that display on top so pane updates remain stable even after plotting packages load.
+Julia-side runtime for plot-pane integration in the [Zed editor](https://zed.dev).
+Renders plots from `Plots.jl`, `Makie.jl`, `Images.jl`, and any library with
+`image/png` or `image/svg+xml` MIME support into a persistent side pane in Zed
+via the image viewer — no Jupyter, no IJulia, no separate GUI window.
+
+![ZedPlotPane in action](https://github.com/user-attachments/assets/3681b379-cf0d-4157-8acc-be2aa0290b77)
+
+## How it works
+
+A custom `ZedDisplay <: AbstractDisplay` is registered via `pushdisplay()`. Every
+plot overwrites a single fixed file (`~/.cache/zed-julia/current-plot.png`); Zed's
+image viewer detects the change via its built-in `fs::watch()` and reloads the
+pane in ~100 ms — no CLI invocation, no focus change.
+
+Plotting libraries such as `Plots.jl` call `pushdisplay()` in their `__init__`,
+which would bury `ZedDisplay` below their own display. A `Base.package_callbacks`
+hook re-promotes `ZedDisplay` to the top after each package load so it always
+takes priority.
+
+Use it together with the [`zed-julia`](https://github.com/JuliaEditorSupport/zed-julia)
+extension, which ships the `Julia: Open Plot Pane` task for opening the plot file
+from Zed's command palette.
 
 ## Installation (before General registration)
 
