@@ -54,6 +54,14 @@ function _ensure_plot_files()
 end
 
 function _write_image(path, x, mime::MIME)
+    if hasfield(typeof(x), :filename)
+        try
+            if abspath(x.filename) == abspath(path)
+                return
+            end
+        catch
+        end
+    end
     open(path, "w") do io
         Base.invokelatest(show, io, mime, x)
     end
