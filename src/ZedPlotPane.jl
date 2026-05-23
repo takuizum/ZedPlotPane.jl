@@ -133,9 +133,9 @@ function Base.display(::ZedDisplay, x)
             path = plot_path(ext)
             _write_image(path, x, mime)
 
-            if mime == MIME("text/html")
+            if mime == MIME("text/html") || mime == MIME("image/svg+xml")
                 _open_in_browser(path)
-                printstyled("[Zed] dynamic plot opened in browser: $(path)\n"; color = :cyan)
+                printstyled("[Zed] plot opened in browser: $(path)\n"; color = :cyan)
             else
                 if path != _LAST_OPENED_PATH[]
                     _LAST_OPENED_PATH[] = path
