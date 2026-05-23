@@ -2,26 +2,22 @@
 
 Julia-side runtime for plot-pane integration in the [Zed editor](https://zed.dev).
 Renders plots from `Plots.jl`, `Makie.jl`, `Images.jl`, and any library with
-`image/png` or `image/svg+xml` MIME support into a persistent side pane in Zed
-via the image viewer — no Jupyter, no IJulia, no separate GUI window.
+`image/png`, `image/svg+xml`, `image/jpeg`, or `text/html` MIME support into a persistent side pane in Zed (or your system web browser for dynamic plots) — no Jupyter, no IJulia, no separate GUI window.
 
 ![ZedPlotPane in action](https://github.com/user-attachments/assets/3681b379-cf0d-4157-8acc-be2aa0290b77)
 
 ## How it works
 
 A custom `ZedDisplay <: AbstractDisplay` is registered via `pushdisplay()`. Every
-plot overwrites a single fixed file (`~/.cache/zed-julia/current-plot.png`); Zed's
-image viewer detects the change via its built-in `fs::watch()` and reloads the
-pane in ~100 ms — no CLI invocation, no focus change.
+plot overwrites a format-specific cache file (`~/.cache/zed-julia/current-plot.<ext>` where `<ext>` is `png`, `svg`, `jpg`, or `html`).
 
-Plotting libraries such as `Plots.jl` call `pushdisplay()` in their `__init__`,
-which would bury `ZedDisplay` below their own display. A `Base.package_callbacks`
-hook re-promotes `ZedDisplay` to the top after each package load so it always
-takes priority.
+- **Static plots (PNG, SVG, JPEG)**: Opened in Zed's viewer. When the file changes, Zed's editor detects the change via its built-in `fs::watch()` and reloads the pane in ~100 ms — no CLI invocation, no focus change.
+- **Dynamic/Interactive plots (HTML)**: Opened automatically in your system's default web browser (as Zed does not natively support webviews).
 
 Use it together with the [`zed-julia`](https://github.com/JuliaEditorSupport/zed-julia)
 extension, which ships the `Julia: Open Plot Pane` task for opening the plot file
 from Zed's command palette.
+
 
 ## Installation (before General registration)
 
@@ -83,5 +79,7 @@ ZedPlotPane.enable_auto_init!()
 
 ## Notes
 
-- If `zed` CLI is unavailable, images are still written to `plot_path()`.
+- If the `zed` command is not available in your `PATH`, the package automatically searches for `/Applications/Zed.app/Contents/MacOS/cli` and falls back to using the macOS `open -a Zed` command.
+- You can override or specify a custom Zed CLI path by setting the `ZED_CLI_PATH` environment variable.
 - Zed extension-specific task/config files stay in `zed-julia`, not in this package.
+

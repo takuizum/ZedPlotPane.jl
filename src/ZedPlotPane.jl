@@ -5,9 +5,11 @@ export ZedDisplay,
        disable_auto_init!,
        enable_auto_init!,
        plot_path,
-       setup_display!
+       setup_display!,
+       register_display!,
+       setup_environment!
 
-const PLOT_PATH = expanduser("~/.cache/zed-julia/current-plot.png")
+const CACHE_DIR = expanduser("~/.cache/zed-julia")
 
 const BLANK_PNG = UInt8[
     0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
@@ -18,52 +20,133 @@ const BLANK_PNG = UInt8[
     0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
 ]
 
+const BLANK_SVG = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1\" height=\"1\"></svg>"
+
+const BLANK_HTML = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body></body></html>"
+
 struct ZedDisplay <: AbstractDisplay end
-const _PLOT_OPENED = Ref(false)
+const _LAST_OPENED_PATH = Ref{String}("")
 const _AUTO_INIT = Ref(true)
 const _CALLBACK_REGISTERED = Ref(false)
 
-plot_path() = PLOT_PATH
+plot_path() = joinpath(CACHE_DIR, "current-plot.png")
+plot_path(ext::AbstractString) = joinpath(CACHE_DIR, "current-plot.$ext")
+
 auto_init_enabled() = _AUTO_INIT[]
 enable_auto_init!() = (_AUTO_INIT[] = true)
 disable_auto_init!() = (_AUTO_INIT[] = false)
 
-function _ensure_plot_file()
-    dir = dirname(PLOT_PATH)
-    isdir(dir) || mkpath(dir)
-    isfile(PLOT_PATH) || write(PLOT_PATH, BLANK_PNG)
+function _ensure_plot_files()
+    isdir(CACHE_DIR) || mkpath(CACHE_DIR)
+    isfile(plot_path("png")) || write(plot_path("png"), BLANK_PNG)
+    isfile(plot_path("svg")) || write(plot_path("svg"), BLANK_SVG)
+    isfile(plot_path("html")) || write(plot_path("html"), BLANK_HTML)
 end
 
-function _write_image(x, mime::MIME)
-    open(PLOT_PATH, "w") do io
+function _write_image(path, x, mime::MIME)
+    open(path, "w") do io
         Base.invokelatest(show, io, mime, x)
     end
 end
 
-function _open_viewer()
+function _open_viewer(path)
+    get(ENV, "ZED_PLOT_PANE_TESTING", "false") == "true" && return true
+
+    # 1. Custom ENV path
+    cmd = get(ENV, "ZED_CLI_PATH", nothing)
+    if cmd !== nothing
+        try
+            run(Cmd([cmd, path]); wait = false)
+            return true
+        catch
+        end
+    end
+
+    # 2. System PATH lookup
     cmd = Sys.which("zed")
-    cmd === nothing && return false
-    try
-        run(Cmd([cmd, PLOT_PATH]); wait = false)
-        return true
-    catch
-        return false
+    if cmd !== nothing
+        try
+            run(Cmd([cmd, path]); wait = false)
+            return true
+        catch
+        end
+    end
+
+    # 3. macOS specific lookups
+    if Sys.isapple()
+        mac_cli = "/Applications/Zed.app/Contents/MacOS/cli"
+        if isfile(mac_cli)
+            try
+                run(Cmd([mac_cli, path]); wait = false)
+                return true
+            catch
+            end
+        end
+        try
+            run(Cmd(["open", "-a", "Zed", path]); wait = false)
+            return true
+        catch
+        end
+    end
+
+    return false
+end
+
+function _open_in_browser(path)
+    get(ENV, "ZED_PLOT_PANE_TESTING", "false") == "true" && return true
+
+    if Sys.isapple()
+        try run(Cmd(["open", path]); wait = false); return true; catch; end
+    elseif Sys.iswindows()
+        try run(Cmd(["cmd", "/c", "start", path]); wait = false); return true; catch; end
+    elseif Sys.islinux()
+        try run(Cmd(["xdg-open", path]); wait = false); return true; catch; end
+    end
+    return false
+end
+
+function mime_to_ext(mime::MIME)
+    mstr = string(mime)
+    if mstr == "text/html"
+        return "html"
+    elseif mstr == "image/svg+xml"
+        return "svg"
+    elseif mstr == "image/png"
+        return "png"
+    elseif mstr == "image/jpeg"
+        return "jpg"
+    else
+        return "png"
     end
 end
 
 function Base.display(::ZedDisplay, x)
-    for mime in (MIME("image/png"), MIME("image/svg+xml"))
+    mimes = (
+        MIME("text/html"),
+        MIME("image/png"),
+        MIME("image/svg+xml"),
+        MIME("image/jpeg")
+    )
+    for mime in mimes
         if Base.invokelatest(showable, mime, x)
-            _write_image(x, mime)
-            if !_PLOT_OPENED[]
-                _PLOT_OPENED[] = true
-                if _open_viewer()
-                    printstyled("[Zed] plot pane opened - drag tab to a split for persistent side pane\n"; color = :cyan)
-                else
-                    printstyled("[Zed] plot saved to $(PLOT_PATH)\n"; color = :yellow)
-                end
+            ext = mime_to_ext(mime)
+            path = plot_path(ext)
+            _write_image(path, x, mime)
+
+            if mime == MIME("text/html")
+                _open_in_browser(path)
+                printstyled("[Zed] dynamic plot opened in browser: $(path)\n"; color = :cyan)
             else
-                printstyled("[Zed] plot updated\n"; color = :cyan)
+                if path != _LAST_OPENED_PATH[]
+                    _LAST_OPENED_PATH[] = path
+                    if _open_viewer(path)
+                        printstyled("[Zed] plot pane opened - drag tab to a split for persistent side pane\n"; color = :cyan)
+                    else
+                        printstyled("[Zed] plot saved to $(path)\n"; color = :yellow)
+                    end
+                else
+                    printstyled("[Zed] plot updated\n"; color = :cyan)
+                end
             end
             return
         end
@@ -98,10 +181,31 @@ function _ensure_display_priority!()
     push!(displays, splice!(displays, keep_idx))
 end
 
-function setup_display!(; register_callback::Bool = true)
-    _ensure_plot_file()
-    get!(ENV, "GKSwstype", "100")
+"""
+    register_display!()
+
+Register `ZedDisplay` as a Julia display at the top of the display stack.
+"""
+function register_display!()
     _ensure_display_priority!()
+    return nothing
+end
+
+"""
+    setup_environment!()
+
+Configure environment variables (e.g., set GKSwstype to "100" for headless plotting)
+and ensure the cache directory exists.
+"""
+function setup_environment!()
+    _ensure_plot_files()
+    get!(ENV, "GKSwstype", "100")
+    return nothing
+end
+
+function setup_display!(; register_callback::Bool = true)
+    setup_environment!()
+    register_display!()
     register_callback && _register_repush_callback!()
     return nothing
 end
