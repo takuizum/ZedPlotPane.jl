@@ -19,9 +19,16 @@ extension, which ships the `Julia: Open Plot Pane` task for opening the plot fil
 from Zed's command palette.
 
 
-## Installation (before General registration)
+## Installation
 
-This package is currently installed directly from GitHub.
+### Install from the official registry (General)
+
+```julia
+using Pkg
+Pkg.add("ZedPlotPane")
+```
+
+### Install the development version from GitHub
 
 ```julia
 using Pkg
@@ -91,4 +98,3 @@ open_pane()
 - If the `zed` command is not available in your `PATH`, the package automatically searches for `/Applications/Zed.app/Contents/MacOS/cli` and falls back to using the macOS `open -a Zed` command.
 - You can override or specify a custom Zed CLI path by setting the `ZED_CLI_PATH` environment variable.
 - Zed extension-specific task/config files stay in `zed-julia`, not in this package.
-
