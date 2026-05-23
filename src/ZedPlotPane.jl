@@ -238,6 +238,7 @@ and ensure the cache directory exists.
 function setup_environment!()
     _ensure_plot_files()
     get!(ENV, "GKSwstype", "100")
+    get!(ENV, "MPLBACKEND", "Agg")
     return nothing
 end
 

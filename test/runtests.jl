@@ -39,6 +39,7 @@ end
         @test isfile(ZedPlotPane.plot_path("png"))
         @test isfile(ZedPlotPane.plot_path("svg"))
         @test isfile(ZedPlotPane.plot_path("html"))
+        @test ENV["MPLBACKEND"] == "Agg"
 
         ZedPlotPane.register_display!()
         @test count(d -> d isa ZedPlotPane.ZedDisplay, displays) == before + (before == 0 ? 1 : 0)
