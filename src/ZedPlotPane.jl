@@ -7,7 +7,8 @@ export ZedDisplay,
        plot_path,
        setup_display!,
        register_display!,
-       setup_environment!
+       setup_environment!,
+       open_pane
 
 const CACHE_DIR = expanduser("~/.cache/zed-julia")
 
@@ -244,6 +245,23 @@ function setup_display!(; register_callback::Bool = true)
     setup_environment!()
     register_display!()
     register_callback && _register_repush_callback!()
+    return nothing
+end
+
+"""
+    open_pane()
+
+Manually open the Zed plot pane. This is useful if the pane was closed
+and you want to re-open it without waiting for the next plot command.
+"""
+function open_pane()
+    _ensure_plot_files()
+    if _open_viewer()
+        _LAST_OPENED_PATH[] = plot_path("png")
+        printstyled("[Zed] plot pane opened\n"; color = :cyan)
+    else
+        printstyled("[Zed] could not open viewer (is 'zed' in your PATH?)\n"; color = :red)
+    end
     return nothing
 end
 

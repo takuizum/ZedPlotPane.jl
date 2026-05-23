@@ -105,3 +105,8 @@ Base.show(io::IO, ::MIME"image/jpeg", ::MockJPEG) = write(io, "jpeg-data")
     display(d, MockJPEG())
     @test read(ZedPlotPane.plot_path("jpg"), String) == "jpeg-data"
 end
+
+@testset "open_pane" begin
+    # Should not throw even if 'zed' is missing
+    @test_nowarn open_pane()
+end

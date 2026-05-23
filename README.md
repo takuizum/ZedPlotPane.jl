@@ -77,6 +77,15 @@ ZedPlotPane.disable_auto_init!()
 ZedPlotPane.enable_auto_init!()
 ```
 
+## Redisplaying the plot pane
+
+If you close the plot pane in Zed, you can reopen it manually without waiting for the next plot:
+
+```julia
+using ZedPlotPane
+open_pane()
+```
+
 ## Notes
 
 - If the `zed` command is not available in your `PATH`, the package automatically searches for `/Applications/Zed.app/Contents/MacOS/cli` and falls back to using the macOS `open -a Zed` command.
