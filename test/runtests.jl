@@ -5,12 +5,12 @@ using ZedPlotPane
 ENV["ZED_PLOT_PANE_TESTING"] = "true"
 
 @testset "ZedPlotPane basics" begin
-    @test occursin(".cache/zed-julia/current-plot.png", ZedPlotPane.plot_path())
-    @test occursin(".cache/zed-julia/current-plot.svg", ZedPlotPane.plot_path("svg"))
-    @test occursin(".cache/zed-julia/current-plot.html", ZedPlotPane.plot_path("html"))
-    @test occursin(".cache/zed-julia/current-plot.jpg", ZedPlotPane.plot_path("jpg"))
-    @test occursin(".cache/zed-julia/current-plot.gif", ZedPlotPane.plot_path("gif"))
-    
+    @test occursin(joinpath(".cache", "zed-julia", "current-plot.png"), ZedPlotPane.plot_path())
+    @test occursin(joinpath(".cache", "zed-julia", "current-plot.svg"), ZedPlotPane.plot_path("svg"))
+    @test occursin(joinpath(".cache", "zed-julia", "current-plot.html"), ZedPlotPane.plot_path("html"))
+    @test occursin(joinpath(".cache", "zed-julia", "current-plot.jpg"), ZedPlotPane.plot_path("jpg"))
+    @test occursin(joinpath(".cache", "zed-julia", "current-plot.gif"), ZedPlotPane.plot_path("gif"))
+
     d = ZedPlotPane.ZedDisplay()
     @test displayable(d, MIME("image/png"))
     @test displayable(d, MIME("image/jpeg"))
@@ -100,7 +100,7 @@ Base.show(io::IO, ::MIME"image/gif", ::MockGIF) = write(io, "gif-data")
 @testset "display support for multiple MIME types" begin
     # Ensure display works for MockPNG
     d = ZedPlotPane.ZedDisplay()
-    
+
     display(d, MockPNG())
     @test read(ZedPlotPane.plot_path("png"), String) == "png-data"
 
