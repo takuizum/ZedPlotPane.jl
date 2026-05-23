@@ -9,6 +9,13 @@ ENV["ZED_PLOT_PANE_TESTING"] = "true"
     @test occursin(".cache/zed-julia/current-plot.svg", ZedPlotPane.plot_path("svg"))
     @test occursin(".cache/zed-julia/current-plot.html", ZedPlotPane.plot_path("html"))
     @test occursin(".cache/zed-julia/current-plot.jpg", ZedPlotPane.plot_path("jpg"))
+    
+    d = ZedPlotPane.ZedDisplay()
+    @test displayable(d, MIME("image/png"))
+    @test displayable(d, MIME("image/jpeg"))
+    @test displayable(d, MIME("text/html"))
+    @test displayable(d, MIME("image/svg+xml"))
+    @test !displayable(d, MIME("text/plain"))
 end
 
 @testset "auto-init controls" begin

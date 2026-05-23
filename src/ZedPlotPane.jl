@@ -25,6 +25,7 @@ const BLANK_SVG = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1\" height=
 const BLANK_HTML = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body></body></html>"
 
 struct ZedDisplay <: AbstractDisplay end
+Base.displayable(::ZedDisplay, mime::MIME) = string(mime) in ("image/png", "image/jpeg", "text/html", "image/svg+xml")
 const _LAST_OPENED_PATH = Ref{String}("")
 const _AUTO_INIT = Ref(true)
 const _CALLBACK_REGISTERED = Ref(false)
@@ -92,6 +93,10 @@ function _open_viewer(path)
     return false
 end
 
+function _open_viewer()
+    _open_viewer(plot_path("png"))
+end
+
 function _open_in_browser(path)
     get(ENV, "ZED_PLOT_PANE_TESTING", "false") == "true" && return true
 
@@ -122,10 +127,10 @@ end
 
 function Base.display(::ZedDisplay, x)
     mimes = (
-        MIME("text/html"),
         MIME("image/png"),
-        MIME("image/svg+xml"),
-        MIME("image/jpeg")
+        MIME("image/jpeg"),
+        MIME("text/html"),
+        MIME("image/svg+xml")
     )
     for mime in mimes
         if Base.invokelatest(showable, mime, x)
