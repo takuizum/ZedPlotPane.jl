@@ -25,8 +25,15 @@ const BLANK_SVG = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1\" height=
 
 const BLANK_HTML = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body></body></html>"
 
+const BLANK_GIF = UInt8[
+    0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00, 0x80, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0x21, 0xf9, 0x04, 0x01, 0x00,
+    0x00, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00,
+    0x00, 0x02, 0x02, 0x44, 0x01, 0x00, 0x3b
+]
+
 struct ZedDisplay <: AbstractDisplay end
-Base.displayable(::ZedDisplay, mime::MIME) = string(mime) in ("image/png", "image/jpeg", "text/html", "image/svg+xml")
+Base.displayable(::ZedDisplay, mime::MIME) = string(mime) in ("image/png", "image/jpeg", "image/gif", "text/html", "image/svg+xml")
 const _LAST_OPENED_PATH = Ref{String}("")
 const _AUTO_INIT = Ref(true)
 const _CALLBACK_REGISTERED = Ref(false)
@@ -43,6 +50,7 @@ function _ensure_plot_files()
     isfile(plot_path("png")) || write(plot_path("png"), BLANK_PNG)
     isfile(plot_path("svg")) || write(plot_path("svg"), BLANK_SVG)
     isfile(plot_path("html")) || write(plot_path("html"), BLANK_HTML)
+    isfile(plot_path("gif")) || write(plot_path("gif"), BLANK_GIF)
 end
 
 function _write_image(path, x, mime::MIME)
@@ -121,6 +129,8 @@ function mime_to_ext(mime::MIME)
         return "png"
     elseif mstr == "image/jpeg"
         return "jpg"
+    elseif mstr == "image/gif"
+        return "gif"
     else
         return "png"
     end
@@ -130,6 +140,7 @@ function Base.display(::ZedDisplay, x)
     mimes = (
         MIME("image/png"),
         MIME("image/jpeg"),
+        MIME("image/gif"),
         MIME("text/html"),
         MIME("image/svg+xml")
     )
