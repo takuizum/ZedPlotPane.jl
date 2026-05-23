@@ -81,6 +81,15 @@ ZedPlotPane.disable_auto_init!()
 ZedPlotPane.enable_auto_init!()
 ```
 
+## Redisplaying the plot pane
+
+If you close the plot pane in Zed, you can reopen it manually without waiting for the next plot:
+
+```julia
+using ZedPlotPane
+open_pane()
+```
+
 ## Notes
 
 - If `zed` CLI is unavailable, images are still written to `plot_path()`.

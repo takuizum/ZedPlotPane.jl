@@ -37,3 +37,8 @@ end
         end
     end
 end
+
+@testset "open_pane" begin
+    # Should not throw even if 'zed' is missing
+    @test_nowarn open_pane()
+end

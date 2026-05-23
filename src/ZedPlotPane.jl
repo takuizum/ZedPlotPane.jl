@@ -1,11 +1,12 @@
 module ZedPlotPane
 
 export ZedDisplay,
-       auto_init_enabled,
-       disable_auto_init!,
-       enable_auto_init!,
-       plot_path,
-       setup_display!
+    auto_init_enabled,
+    disable_auto_init!,
+    enable_auto_init!,
+    open_pane,
+    plot_path,
+    setup_display!
 
 const PLOT_PATH = expanduser("~/.cache/zed-julia/current-plot.png")
 
@@ -44,7 +45,7 @@ function _open_viewer()
     cmd = Sys.which("zed")
     cmd === nothing && return false
     try
-        run(Cmd([cmd, PLOT_PATH]); wait = false)
+        run(Cmd([cmd, PLOT_PATH]); wait=false)
         return true
     catch
         return false
@@ -58,12 +59,12 @@ function Base.display(::ZedDisplay, x)
             if !_PLOT_OPENED[]
                 _PLOT_OPENED[] = true
                 if _open_viewer()
-                    printstyled("[Zed] plot pane opened - drag tab to a split for persistent side pane\n"; color = :cyan)
+                    printstyled("[Zed] plot pane opened - drag tab to a split for persistent side pane\n"; color=:cyan)
                 else
-                    printstyled("[Zed] plot saved to $(PLOT_PATH)\n"; color = :yellow)
+                    printstyled("[Zed] plot saved to $(PLOT_PATH)\n"; color=:yellow)
                 end
             else
-                printstyled("[Zed] plot updated\n"; color = :cyan)
+                printstyled("[Zed] plot updated\n"; color=:cyan)
             end
             return
         end
@@ -73,7 +74,7 @@ end
 
 function _register_repush_callback!()
     _CALLBACK_REGISTERED[] && return
-    push!(Base.package_callbacks, function(::Base.PkgId)
+    push!(Base.package_callbacks, function (::Base.PkgId)
         _ensure_display_priority!()
     end)
     _CALLBACK_REGISTERED[] = true
@@ -98,7 +99,7 @@ function _ensure_display_priority!()
     push!(displays, splice!(displays, keep_idx))
 end
 
-function setup_display!(; register_callback::Bool = true)
+function setup_display!(; register_callback::Bool=true)
     _ensure_plot_file()
     get!(ENV, "GKSwstype", "100")
     _ensure_display_priority!()
@@ -106,7 +107,25 @@ function setup_display!(; register_callback::Bool = true)
     return nothing
 end
 
+"""
+    open_pane()
+
+Manually open the Zed plot pane. This is useful if the pane was closed
+and you want to re-open it without waiting for the next plot command.
+"""
+function open_pane()
+    _ensure_plot_file()
+    if _open_viewer()
+        _PLOT_OPENED[] = true
+        printstyled("[Zed] plot pane opened\n"; color=:cyan)
+    else
+        printstyled("[Zed] could not open viewer (is 'zed' in your PATH?)\n"; color=:red)
+    end
+    return nothing
+end
+
 function __init__()
+
     !isinteractive() && return
     _AUTO_INIT[] || return
     setup_display!()
