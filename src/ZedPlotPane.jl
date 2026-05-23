@@ -133,9 +133,41 @@ function Base.display(::ZedDisplay, x)
             path = plot_path(ext)
             _write_image(path, x, mime)
 
-            if mime == MIME("text/html") || mime == MIME("image/svg+xml")
+            if mime == MIME("image/svg+xml")
+                svg_content = read(path, String)
+                html_wrapper = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <title>Zed Plot SVG Preview</title>
+                    <style>
+                        body {
+                            margin: 0;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            height: 100vh;
+                            background-color: #1e1e24;
+                        }
+                        svg {
+                            max-width: 95vw;
+                            max-height: 95vh;
+                        }
+                    </style>
+                </head>
+                <body>
+                    $(svg_content)
+                </body>
+                </html>
+                """
+                html_path = plot_path("html")
+                write(html_path, html_wrapper)
+                _open_in_browser(html_path)
+                printstyled("[Zed] SVG plot opened in browser via HTML wrapper: $(html_path)\n"; color = :cyan)
+            elseif mime == MIME("text/html")
                 _open_in_browser(path)
-                printstyled("[Zed] plot opened in browser: $(path)\n"; color = :cyan)
+                printstyled("[Zed] dynamic plot opened in browser: $(path)\n"; color = :cyan)
             else
                 if path != _LAST_OPENED_PATH[]
                     _LAST_OPENED_PATH[] = path
