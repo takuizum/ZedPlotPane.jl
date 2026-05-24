@@ -1,7 +1,7 @@
 name = "ZedPlotPane"
 uuid = "1a2e9a1c-d784-4d3f-8c27-9f27d983cc09"
 authors = ["takuizum"]
-version = "0.1.0"
+version = "0.1.1"
 
 [compat]
 julia = "1.10"
