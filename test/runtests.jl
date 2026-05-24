@@ -5,12 +5,19 @@ using ZedPlotPane
 ENV["ZED_PLOT_PANE_TESTING"] = "true"
 
 @testset "ZedPlotPane basics" begin
-    @test occursin(".cache/zed-julia/current-plot.png", ZedPlotPane.plot_path())
-    @test occursin(".cache/zed-julia/current-plot.svg", ZedPlotPane.plot_path("svg"))
-    @test occursin(".cache/zed-julia/current-plot.html", ZedPlotPane.plot_path("html"))
-    @test occursin(".cache/zed-julia/current-plot.jpg", ZedPlotPane.plot_path("jpg"))
-    @test occursin(".cache/zed-julia/current-plot.gif", ZedPlotPane.plot_path("gif"))
-    
+    # Helper to check if path contains expected components regardless of separators
+    function contains_path_parts(full_path, parts...)
+        normalized = replace(full_path, "\\" => "/")
+        expected = join(parts, "/")
+        return occursin(expected, normalized)
+    end
+
+    @test contains_path_parts(ZedPlotPane.plot_path(), ".cache", "zed-julia", "current-plot.png")
+    @test contains_path_parts(ZedPlotPane.plot_path("svg"), ".cache", "zed-julia", "current-plot.svg")
+    @test contains_path_parts(ZedPlotPane.plot_path("html"), ".cache", "zed-julia", "current-plot.html")
+    @test contains_path_parts(ZedPlotPane.plot_path("jpg"), ".cache", "zed-julia", "current-plot.jpg")
+    @test contains_path_parts(ZedPlotPane.plot_path("gif"), ".cache", "zed-julia", "current-plot.gif")
+
     d = ZedPlotPane.ZedDisplay()
     @test displayable(d, MIME("image/png"))
     @test displayable(d, MIME("image/jpeg"))
@@ -100,7 +107,7 @@ Base.show(io::IO, ::MIME"image/gif", ::MockGIF) = write(io, "gif-data")
 @testset "display support for multiple MIME types" begin
     # Ensure display works for MockPNG
     d = ZedPlotPane.ZedDisplay()
-    
+
     display(d, MockPNG())
     @test read(ZedPlotPane.plot_path("png"), String) == "png-data"
 
