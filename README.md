@@ -15,8 +15,7 @@ plot overwrites a format-specific cache file (`~/.cache/zed-julia/current-plot.<
 - **Dynamic/Interactive plots (HTML)**: Opened automatically in your system's default web browser (as Zed does not natively support webviews).
 
 Use it together with the [`zed-julia`](https://github.com/JuliaEditorSupport/zed-julia)
-extension, which ships the `Julia: Open Plot Pane` task for opening the plot file
-from Zed's command palette.
+extension.
 
 
 ## Installation
