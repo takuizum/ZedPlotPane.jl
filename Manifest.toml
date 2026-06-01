@@ -1,10 +1,18 @@
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.12.4"
+julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "600a48223906ad5dc045fd31af4ccd0cc182166b"
+project_hash = "c1a0fd7c2cb26202cb7e60e7f77be36f0883069c"
 
 [[deps.ZedPlotPane]]
 path = "."
 uuid = "1a2e9a1c-d784-4d3f-8c27-9f27d983cc09"
 version = "0.1.0"
+
+    [deps.ZedPlotPane.extensions]
+    PyCallExt = "PyCall"
+    PythonCallExt = "PythonCall"
+
+    [deps.ZedPlotPane.weakdeps]
+    PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
+    PythonCall = "6099a3de-0909-46bc-b1f4-468b9a2dfc0d"
