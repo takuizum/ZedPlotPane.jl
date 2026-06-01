@@ -1,14 +1,14 @@
 module ZedPlotPane
 
 export ZedDisplay,
-       auto_init_enabled,
-       disable_auto_init!,
-       enable_auto_init!,
-       plot_path,
-       setup_display!,
-       register_display!,
-       setup_environment!,
-       open_pane
+    auto_init_enabled,
+    disable_auto_init!,
+    enable_auto_init!,
+    plot_path,
+    setup_display!,
+    register_display!,
+    setup_environment!,
+    open_pane
 
 const CACHE_DIR = expanduser("~/.cache/zed-julia")
 
@@ -74,7 +74,7 @@ function _open_viewer(path)
     cmd = get(ENV, "ZED_CLI_PATH", nothing)
     if cmd !== nothing
         try
-            run(Cmd([cmd, path]); wait = false)
+            run(Cmd([cmd, path]); wait=false)
             return true
         catch
         end
@@ -84,7 +84,7 @@ function _open_viewer(path)
     cmd = Sys.which("zed")
     if cmd !== nothing
         try
-            run(Cmd([cmd, path]); wait = false)
+            run(Cmd([cmd, path]); wait=false)
             return true
         catch
         end
@@ -95,13 +95,13 @@ function _open_viewer(path)
         mac_cli = "/Applications/Zed.app/Contents/MacOS/cli"
         if isfile(mac_cli)
             try
-                run(Cmd([mac_cli, path]); wait = false)
+                run(Cmd([mac_cli, path]); wait=false)
                 return true
             catch
             end
         end
         try
-            run(Cmd(["open", "-a", "Zed", path]); wait = false)
+            run(Cmd(["open", "-a", "Zed", path]); wait=false)
             return true
         catch
         end
@@ -118,11 +118,23 @@ function _open_in_browser(path)
     get(ENV, "ZED_PLOT_PANE_TESTING", "false") == "true" && return true
 
     if Sys.isapple()
-        try run(Cmd(["open", path]); wait = false); return true; catch; end
+        try
+            run(Cmd(["open", path]); wait=false)
+            return true
+        catch
+        end
     elseif Sys.iswindows()
-        try run(Cmd(["cmd", "/c", "start", path]); wait = false); return true; catch; end
+        try
+            run(Cmd(["cmd", "/c", "start", path]); wait=false)
+            return true
+        catch
+        end
     elseif Sys.islinux()
-        try run(Cmd(["xdg-open", path]); wait = false); return true; catch; end
+        try
+            run(Cmd(["xdg-open", path]); wait=false)
+            return true
+        catch
+        end
     end
     return false
 end
@@ -189,20 +201,20 @@ function Base.display(::ZedDisplay, x)
                 html_path = plot_path("html")
                 write(html_path, html_wrapper)
                 _open_in_browser(html_path)
-                printstyled("[Zed] SVG plot opened in browser via HTML wrapper: $(html_path)\n"; color = :cyan)
+                printstyled("[Zed] SVG plot opened in browser via HTML wrapper: $(html_path)\n"; color=:cyan)
             elseif mime == MIME("text/html")
                 _open_in_browser(path)
-                printstyled("[Zed] dynamic plot opened in browser: $(path)\n"; color = :cyan)
+                printstyled("[Zed] dynamic plot opened in browser: $(path)\n"; color=:cyan)
             else
                 if path != _LAST_OPENED_PATH[]
                     _LAST_OPENED_PATH[] = path
                     if _open_viewer(path)
-                        printstyled("[Zed] plot pane opened - drag tab to a split for persistent side pane\n"; color = :cyan)
+                        printstyled("[Zed] plot pane opened - drag tab to a split for persistent side pane\n"; color=:cyan)
                     else
-                        printstyled("[Zed] plot saved to $(path)\n"; color = :yellow)
+                        printstyled("[Zed] plot saved to $(path)\n"; color=:yellow)
                     end
                 else
-                    printstyled("[Zed] plot updated\n"; color = :cyan)
+                    printstyled("[Zed] plot updated\n"; color=:cyan)
                 end
             end
             return
@@ -213,7 +225,7 @@ end
 
 function _register_repush_callback!()
     _CALLBACK_REGISTERED[] && return
-    push!(Base.package_callbacks, function(::Base.PkgId)
+    push!(Base.package_callbacks, function (::Base.PkgId)
         _ensure_display_priority!()
     end)
     _CALLBACK_REGISTERED[] = true
@@ -254,14 +266,18 @@ end
 Configure environment variables (e.g., set GKSwstype to "100" for headless plotting)
 and ensure the cache directory exists.
 """
+const _FIX_MPL_BACKEND_CALLBACK = Ref{Function}(() -> nothing)
+
 function setup_environment!()
     _ensure_plot_files()
-    get!(ENV, "GKSwstype", "100")
-    get!(ENV, "MPLBACKEND", "Agg")
+    # Force headless backends for Zed
+    ENV["GKSwstype"] = "100"
+    ENV["MPLBACKEND"] = "Agg"
+    _FIX_MPL_BACKEND_CALLBACK[]()
     return nothing
 end
 
-function setup_display!(; register_callback::Bool = true)
+function setup_display!(; register_callback::Bool=true)
     setup_environment!()
     register_display!()
     register_callback && _register_repush_callback!()
@@ -278,9 +294,9 @@ function open_pane()
     _ensure_plot_files()
     if _open_viewer()
         _LAST_OPENED_PATH[] = plot_path("png")
-        printstyled("[Zed] plot pane opened\n"; color = :cyan)
+        printstyled("[Zed] plot pane opened\n"; color=:cyan)
     else
-        printstyled("[Zed] could not open viewer (is 'zed' in your PATH?)\n"; color = :red)
+        printstyled("[Zed] could not open viewer (is 'zed' in your PATH?)\n"; color=:red)
     end
     return nothing
 end

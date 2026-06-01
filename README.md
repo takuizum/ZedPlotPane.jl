@@ -74,6 +74,38 @@ lines!(1:10, rand(10))
 display(f)
 ```
 
+## Matplotlib / PythonCall example
+
+```julia
+using ZedPlotPane
+using PythonCall
+
+ZedPlotPane.setup_display!()
+plt = pyimport("matplotlib.pyplot")
+plt.plot(1:10, rand(10))
+display(plt.gcf())
+```
+
+> **Note**: For Matplotlib, `ZedPlotPane` automatically sets `ENV["MPLBACKEND"] = "Agg"` to capture plots. If you use `PythonCall.jl` or `PyCall.jl`, make sure to call `display(plt.gcf())` to send the current figure to the Zed Plot Pane.
+
+## Running Examples
+
+The `example/` directory contains demonstration scripts for various plotting backends. To run them, it is recommended to use the provided project environment:
+
+1.  **Set up the environment**:
+    ```bash
+    # From the project root
+    julia --project=example -e 'using Pkg; Pkg.develop("."); Pkg.instantiate()'
+    ```
+2.  **Run a demo**:
+    ```bash
+    julia --project=example example/plots_gr_demo.jl
+    # or for matplotlib
+    julia --project=example example/matplotlib_pythoncall_demo.jl
+    ```
+
+> **Note for Python users**: If you are using `uv` or a custom virtual environment, ensure your Julia `PythonCall` preferences are configured to point to your Python executable (e.g., using `PreferenceTools.jl`).
+
 ## Auto-init behavior
 
 Auto-init is enabled by default in interactive Julia sessions.
