@@ -7,16 +7,22 @@ This directory contains demonstration scripts for various plotting backends.
 To run these examples, it is recommended to use the provided project environment:
 
 1.  **Set up the environment**:
-    From the project root, run:
+    From this directory (`example/`), run:
     ```bash
-    julia --project=example -e 'using Pkg; Pkg.develop("."); Pkg.instantiate()'
+    julia --project
+    ```
+    Then inside Julia REPL:
+    ```julia
+    using Pkg
+    Pkg.develop(path="..")  # Link the local ZedPlotPane library
+    Pkg.instantiate()       # Install backends (Plots, PythonCall, etc.)
     ```
 
 2.  **Run a demo**:
-    ```bash
-    julia --project=example example/plots_gr_demo.jl
+    ```julia
+    include("plots_gr_demo.jl")
     # or for matplotlib
-    julia --project=example example/matplotlib_pythoncall_demo.jl
+    include("matplotlib_pythoncall_demo.jl")
     ```
 
 ## Python Integration Note

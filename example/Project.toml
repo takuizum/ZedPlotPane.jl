@@ -1,0 +1,13 @@
+name = "ZedPlotPaneExamples"
+uuid = "e3612807-6c2e-4009-8086-63e6e872df67"
+
+[deps]
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+CondaPkg = "992eb4ea-22a4-4c89-a5bb-47a3300528ab"
+Gadfly = "c91e804a-d5a3-530f-b6f0-dfbca275c004"
+Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+PythonCall = "6099a3de-0909-46bc-b1f4-468b9a2dfc0d"
+ZedPlotPane = "1a2e9a1c-d784-4d3f-8c27-9f27d983cc09"
+
+[compat]
+julia = "1.10"
