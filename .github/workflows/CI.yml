@@ -16,6 +16,9 @@ jobs:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }} - ${{ github.event_name }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    env:
+      # Avoid CondaPkg/pixi network downloads during PythonCall initialization by using the runner's system Python.
+      JULIA_PYTHONCALL_EXE: python
     permissions: # needed to allow julia-actions/cache to delete old caches
       actions: write
       contents: read
