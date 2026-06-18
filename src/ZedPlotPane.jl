@@ -156,6 +156,22 @@ function mime_to_ext(mime::MIME)
     end
 end
 
+"""
+    _is_interactive_html(html) -> Bool
+
+Heuristic to decide whether a `text/html` representation is an interactive web
+plot (Plotly, Bokeh, VegaLite/Altair, WGLMakie, folium, ...) that should be
+opened in the browser, versus static markup such as a `pandas`/`polars`/
+`DataFrames` table, `Base.Docs.HTML`, or rendered Markdown that should fall
+through to the REPL's `text/plain` rendering.
+
+Interactive plots embed JavaScript (`<script>`) or wrap their content in an
+`<iframe>` (e.g. folium escapes its `<script>` inside an iframe `srcdoc`),
+whereas static tables are pure markup. Keying on those two markers cleanly
+separates the two without enumerating every plotting library.
+"""
+_is_interactive_html(html::AbstractString) = occursin(r"<script|<iframe"i, html)
+
 function Base.display(::ZedDisplay, x)
     mimes = (
         MIME("image/png"),
@@ -165,60 +181,72 @@ function Base.display(::ZedDisplay, x)
         MIME("image/svg+xml")
     )
     for mime in mimes
-        if Base.invokelatest(showable, mime, x)
-            ext = mime_to_ext(mime)
-            path = plot_path(ext)
-            _write_image(path, x, mime)
+        Base.invokelatest(showable, mime, x) || continue
 
-            if mime == MIME("image/svg+xml")
-                svg_content = read(path, String)
-                html_wrapper = """
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="utf-8">
-                    <title>Zed Plot SVG Preview</title>
-                    <style>
-                        body {
-                            margin: 0;
-                            display: flex;
-                            justify-content: center;
-                            align-items: center;
-                            height: 100vh;
-                            background-color: #1e1e24;
-                        }
-                        svg {
-                            max-width: 95vw;
-                            max-height: 95vh;
-                        }
-                    </style>
-                </head>
-                <body>
-                    $(svg_content)
-                </body>
-                </html>
-                """
-                html_path = plot_path("html")
-                write(html_path, html_wrapper)
-                _open_in_browser(html_path)
-                printstyled("[Zed] SVG plot opened in browser via HTML wrapper: $(html_path)\n"; color=:cyan)
-            elseif mime == MIME("text/html")
-                _open_in_browser(path)
-                printstyled("[Zed] dynamic plot opened in browser: $(path)\n"; color=:cyan)
-            else
-                if path != _LAST_OPENED_PATH[]
-                    _LAST_OPENED_PATH[] = path
-                    if _open_viewer(path)
-                        printstyled("[Zed] plot pane opened - drag tab to a split for persistent side pane\n"; color=:cyan)
-                    else
-                        printstyled("[Zed] plot saved to $(path)\n"; color=:yellow)
-                    end
-                else
-                    printstyled("[Zed] plot updated\n"; color=:cyan)
-                end
-            end
+        # text/html is ambiguous: interactive plots and plain tables (pandas,
+        # polars, DataFrames, Base.Docs.HTML, ...) are both showable as HTML.
+        # Only open the browser for interactive plots; otherwise skip this MIME
+        # so the value falls through to the REPL's text/plain rendering instead
+        # of spuriously launching a browser window.
+        if mime == MIME("text/html")
+            html = sprint(io -> Base.invokelatest(show, io, mime, x))
+            _is_interactive_html(html) || continue
+            path = plot_path("html")
+            write(path, html)
+            _open_in_browser(path)
+            printstyled("[Zed] dynamic plot opened in browser: $(path)\n"; color=:cyan)
             return
         end
+
+        ext = mime_to_ext(mime)
+        path = plot_path(ext)
+        _write_image(path, x, mime)
+
+        if mime == MIME("image/svg+xml")
+            svg_content = read(path, String)
+            html_wrapper = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <title>Zed Plot SVG Preview</title>
+                <style>
+                    body {
+                        margin: 0;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        height: 100vh;
+                        background-color: #1e1e24;
+                    }
+                    svg {
+                        max-width: 95vw;
+                        max-height: 95vh;
+                    }
+                </style>
+            </head>
+            <body>
+                $(svg_content)
+            </body>
+            </html>
+            """
+            html_path = plot_path("html")
+            write(html_path, html_wrapper)
+            _open_in_browser(html_path)
+            printstyled("[Zed] SVG plot opened in browser via HTML wrapper: $(html_path)\n"; color=:cyan)
+        else
+            if path != _LAST_OPENED_PATH[]
+                _LAST_OPENED_PATH[] = path
+                if _open_viewer(path)
+                    printstyled("[Zed] plot pane opened - drag tab to a split for persistent side pane\n"; color=:cyan)
+                else
+                    printstyled("[Zed] plot saved to $(path)\n"; color=:yellow)
+                end
+            else
+                printstyled("[Zed] plot updated\n"; color=:cyan)
+            end
+        end
+        return
     end
     throw(MethodError(display, (ZedDisplay(), x)))
 end

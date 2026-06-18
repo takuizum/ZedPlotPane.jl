@@ -92,9 +92,16 @@ struct MockSVG end
 Base.showable(::MIME"image/svg+xml", ::MockSVG) = true
 Base.show(io::IO, ::MIME"image/svg+xml", ::MockSVG) = write(io, "svg-data")
 
+# Interactive plot: HTML containing JavaScript -> should open in the browser.
 struct MockHTML end
 Base.showable(::MIME"text/html", ::MockHTML) = true
-Base.show(io::IO, ::MIME"text/html", ::MockHTML) = write(io, "html-data")
+Base.show(io::IO, ::MIME"text/html", ::MockHTML) = write(io, "<div><script>Plotly.newPlot()</script></div>")
+
+# Static HTML (e.g. a pandas/polars/DataFrames table): pure markup, no JS ->
+# must NOT open the browser and must fall through to text/plain.
+struct MockTable end
+Base.showable(::MIME"text/html", ::MockTable) = true
+Base.show(io::IO, ::MIME"text/html", ::MockTable) = write(io, "<table><tr><td>1</td></tr></table>")
 
 struct MockJPEG end
 Base.showable(::MIME"image/jpeg", ::MockJPEG) = true
@@ -115,7 +122,7 @@ Base.show(io::IO, ::MIME"image/gif", ::MockGIF) = write(io, "gif-data")
     @test read(ZedPlotPane.plot_path("svg"), String) == "svg-data"
 
     display(d, MockHTML())
-    @test read(ZedPlotPane.plot_path("html"), String) == "html-data"
+    @test read(ZedPlotPane.plot_path("html"), String) == "<div><script>Plotly.newPlot()</script></div>"
 
     display(d, MockJPEG())
     @test read(ZedPlotPane.plot_path("jpg"), String) == "jpeg-data"
@@ -124,7 +131,31 @@ Base.show(io::IO, ::MIME"image/gif", ::MockGIF) = write(io, "gif-data")
     @test read(ZedPlotPane.plot_path("gif"), String) == "gif-data"
 end
 
+@testset "interactive HTML detection" begin
+    @test ZedPlotPane._is_interactive_html("<div><script>x()</script></div>")
+    @test ZedPlotPane._is_interactive_html("<iframe srcdoc=\"...\"></iframe>")
+    @test ZedPlotPane._is_interactive_html("<SCRIPT>x()</SCRIPT>")  # case-insensitive
+    @test !ZedPlotPane._is_interactive_html("<table><tr><td>1</td></tr></table>")
+    @test !ZedPlotPane._is_interactive_html("<div><style>.a{}</style><table></table></div>")
+end
+
+@testset "static HTML tables do not open a browser" begin
+    d = ZedPlotPane.ZedDisplay()
+    # Seed the cache file with a sentinel so we can detect an unwanted overwrite.
+    sentinel = "SENTINEL-DO-NOT-OVERWRITE"
+    write(ZedPlotPane.plot_path("html"), sentinel)
+
+    # MockTable is only showable as text/html and contains no JS, so ZedDisplay
+    # must decline it (MethodError) -> the REPL falls back to text/plain.
+    @test_throws MethodError display(d, MockTable())
+    # The cache file must be untouched (no spurious HTML write).
+    @test read(ZedPlotPane.plot_path("html"), String) == sentinel
+end
+
 @testset "open_pane" begin
     # Should not throw even if 'zed' is missing
     @test_nowarn open_pane()
 end
+
+# Integration tests against real plotting/data libraries (optional deps inside).
+include("integration.jl")
