@@ -73,6 +73,22 @@ lines!(1:10, rand(10))
 display(f)
 ```
 
+## Matplotlib / PythonCall example
+
+```julia
+using ZedPlotPane
+using PythonCall
+
+ZedPlotPane.setup_display!()
+plt = pyimport("matplotlib.pyplot")
+plt.plot(1:10, rand(10))
+display(plt.gcf())
+```
+
+> **Note**: For Matplotlib, `ZedPlotPane` automatically sets `ENV["MPLBACKEND"] = "Agg"` to capture plots. If you use `PythonCall.jl` or `PyCall.jl`, make sure to call `display(plt.gcf())` to send the current figure to the Zed Plot Pane.
+>
+> If your environment cannot download Python via Conda (for example, due to a firewall), set `JULIA_PYTHONCALL_EXE` to a system Python (for example, `python` or `python3`) before starting Julia.
+
 ## Auto-init behavior
 
 Auto-init is enabled by default in interactive Julia sessions.

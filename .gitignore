@@ -1,0 +1,18 @@
+# Julia
+Manifest.toml
+LocalPreferences.toml
+
+# Python
+.venv/
+__pycache__/
+.python-version
+uv.lock
+pyproject.toml
+example/.venv/
+example/__pycache__/
+example/.python-version
+example/uv.lock
+example/pyproject.toml
+
+# OS
+.DS_Store
