@@ -117,6 +117,28 @@ using ZedPlotPane
 clear_pane()
 ```
 
+## Named Plot Panes (Multi-pane support)
+
+Route plots to different files to open multiple plots in separate tabs or side-by-side split panes in Zed:
+
+```julia
+using ZedPlotPane
+
+# Route subsequent plots to "figure2.png"
+set_plot_target!("figure2")
+# plot(...) -> updates ~/.cache/zed-julia/figure2.png
+
+# Revert to the default target ("current-plot.png")
+reset_plot_target!()
+```
+
+You can also open or switch targets directly:
+
+```julia
+open_pane("figure2")
+```
+
+
 
 ## Notes
 
