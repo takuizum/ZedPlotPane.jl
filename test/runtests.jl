@@ -157,5 +157,20 @@ end
     @test_nowarn open_pane()
 end
 
+@testset "clear_pane" begin
+    # Write dirty data to mock active plots
+    write(ZedPlotPane.plot_path("png"), "dirty-png")
+    write(ZedPlotPane.plot_path("svg"), "dirty-svg")
+    write(ZedPlotPane.plot_path("html"), "dirty-html")
+    write(ZedPlotPane.plot_path("gif"), "dirty-gif")
+
+    @test_nowarn clear_pane()
+
+    @test read(ZedPlotPane.plot_path("png")) == ZedPlotPane.BLANK_PNG
+    @test read(ZedPlotPane.plot_path("svg"), String) == ZedPlotPane.BLANK_SVG
+    @test read(ZedPlotPane.plot_path("html"), String) == ZedPlotPane.BLANK_HTML
+    @test read(ZedPlotPane.plot_path("gif")) == ZedPlotPane.BLANK_GIF
+end
+
 # Integration tests against real plotting/data libraries (optional deps inside).
 include("integration.jl")
