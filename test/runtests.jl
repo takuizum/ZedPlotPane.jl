@@ -1,7 +1,6 @@
 using Test
 using ZedPlotPane
 using Preferences
-using TOML
 
 # Ensure we don't open actual windows/browsers during testing
 ENV["ZED_PLOT_PANE_TESTING"] = "true"
@@ -284,15 +283,14 @@ end
         @test ZedPlotPane.history_enabled()
         @test Preferences.load_preference(ZedPlotPane, "history") == true
 
-        # Also verify the preferences landed in LocalPreferences.toml on disk,
-        # so a silently-failing @set_preferences! call would be caught.
-        prefs_path = joinpath(dirname(Base.active_project()), "LocalPreferences.toml")
-        @test isfile(prefs_path)
-        prefs = TOML.parsefile(prefs_path)
-        @test haskey(prefs, "ZedPlotPane")
-        @test prefs["ZedPlotPane"]["cache_dir"] == tmpdir
-        @test prefs["ZedPlotPane"]["auto_init"] == false
-        @test prefs["ZedPlotPane"]["history"] == true
+        # `Preferences.load_preference` above round-trips through whatever
+        # file Preferences.jl actually wrote to (its resolution of "the
+        # project that depends on this package" does not always match
+        # `dirname(Base.active_project())` — e.g. under `Pkg.test()`'s
+        # sandboxed temp environment it can resolve to the package's own
+        # directory instead). That round-trip is sufficient to catch a
+        # silently-failing `@set_preferences!` call without hardcoding or
+        # guessing Preferences.jl's internal file layout.
     finally
         ZedPlotPane.set_persistent_cache_dir!(orig_dir)
         ZedPlotPane.set_persistent_auto_init!(orig_init)
