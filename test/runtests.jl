@@ -1,5 +1,7 @@
 using Test
 using ZedPlotPane
+using Preferences
+using TOML
 
 # Ensure we don't open actual windows/browsers during testing
 ENV["ZED_PLOT_PANE_TESTING"] = "true"
@@ -270,12 +272,27 @@ end
     try
         ZedPlotPane.set_persistent_cache_dir!(tmpdir)
         @test ZedPlotPane.cache_dir() == tmpdir
+        # Confirm the preference was actually persisted (e.g. to
+        # LocalPreferences.toml), not just reflected in the in-memory Ref.
+        @test Preferences.load_preference(ZedPlotPane, "cache_dir") == tmpdir
 
         ZedPlotPane.set_persistent_auto_init!(false)
         @test !ZedPlotPane.auto_init_enabled()
+        @test Preferences.load_preference(ZedPlotPane, "auto_init") == false
 
         ZedPlotPane.set_persistent_history!(true)
         @test ZedPlotPane.history_enabled()
+        @test Preferences.load_preference(ZedPlotPane, "history") == true
+
+        # Also verify the preferences landed in LocalPreferences.toml on disk,
+        # so a silently-failing @set_preferences! call would be caught.
+        prefs_path = joinpath(dirname(Base.active_project()), "LocalPreferences.toml")
+        @test isfile(prefs_path)
+        prefs = TOML.parsefile(prefs_path)
+        @test haskey(prefs, "ZedPlotPane")
+        @test prefs["ZedPlotPane"]["cache_dir"] == tmpdir
+        @test prefs["ZedPlotPane"]["auto_init"] == false
+        @test prefs["ZedPlotPane"]["history"] == true
     finally
         ZedPlotPane.set_persistent_cache_dir!(orig_dir)
         ZedPlotPane.set_persistent_auto_init!(orig_init)

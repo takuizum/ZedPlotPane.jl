@@ -2,6 +2,7 @@ module ZedPlotPane
 
 using Dates
 using Preferences
+using Random
 
 export ZedDisplay,
     auto_init_enabled,
@@ -178,13 +179,40 @@ enable_auto_init!() = (_AUTO_INIT[] = true)
 disable_auto_init!() = (_AUTO_INIT[] = false)
 
 function _save_history(path::AbstractString, ext::AbstractString)
-    hdir = history_dir()
-    isdir(hdir) || mkpath(hdir)
-    timestamp = Dates.format(Dates.now(), "yyyymmdd_HHMMSS_sss")
-    hist_filename = "$(_PLOT_PREFIX[])_$(timestamp).$ext"
-    hist_path = joinpath(hdir, hist_filename)
-    cp(path, hist_path; force=true)
-    return hist_path
+    try
+        hdir = history_dir()
+        isdir(hdir) || mkpath(hdir)
+        timestamp = Dates.format(Dates.now(), "yyyymmdd_HHMMSS_sss")
+        base_filename = "$(_PLOT_PREFIX[])_$(timestamp)"
+        hist_path = joinpath(hdir, "$(base_filename).$ext")
+
+        # Guard against filename collisions: the millisecond-resolution
+        # timestamp can repeat for rapid successive plots, which would
+        # otherwise silently overwrite a previous history entry. Append an
+        # incrementing counter, then a random suffix, before falling back to
+        # overwriting as a last resort.
+        if ispath(hist_path)
+            found = false
+            for i in 1:99
+                candidate = joinpath(hdir, "$(base_filename)_$(i).$ext")
+                if !ispath(candidate)
+                    hist_path = candidate
+                    found = true
+                    break
+                end
+            end
+            if !found
+                suffix = Random.randstring(8)
+                hist_path = joinpath(hdir, "$(base_filename)_$(suffix).$ext")
+            end
+        end
+
+        cp(path, hist_path; force=true)
+        return hist_path
+    catch err
+        @warn "Failed to save plot history" exception=(err, catch_backtrace())
+        return nothing
+    end
 end
 
 function _ensure_plot_files()
