@@ -9,7 +9,10 @@ export ZedDisplay,
     register_display!,
     setup_environment!,
     open_pane,
-    clear_pane
+    clear_pane,
+    plot_target,
+    set_plot_target!,
+    reset_plot_target!
 
 const CACHE_DIR = expanduser("~/.cache/zed-julia")
 
@@ -38,9 +41,40 @@ Base.displayable(::ZedDisplay, mime::MIME) = string(mime) in ("image/png", "imag
 const _LAST_OPENED_PATH = Ref{String}("")
 const _AUTO_INIT = Ref(true)
 const _CALLBACK_REGISTERED = Ref(false)
+const _PLOT_PREFIX = Ref{String}("current-plot")
 
-plot_path() = joinpath(CACHE_DIR, "current-plot.png")
-plot_path(ext::AbstractString) = joinpath(CACHE_DIR, "current-plot.$ext")
+"""
+    plot_target() -> String
+
+Return the current plot target file prefix (default: `"current-plot"`).
+"""
+plot_target() = _PLOT_PREFIX[]
+
+"""
+    set_plot_target!(name::AbstractString)
+
+Set the active plot target file prefix (e.g. `"figure2"`). Subsequent plots
+will be written to `<name>.<ext>`, allowing them to be opened in separate panes or tabs.
+"""
+function set_plot_target!(name::AbstractString)
+    isempty(name) && throw(ArgumentError("Plot target name cannot be empty"))
+    (occursin('/', name) || occursin('\\', name)) && throw(ArgumentError("Plot target name cannot contain path separators ('/' or '\\')"))
+    _PLOT_PREFIX[] = String(name)
+    return _PLOT_PREFIX[]
+end
+
+"""
+    reset_plot_target!()
+
+Reset the plot target file prefix back to `"current-plot"`.
+"""
+function reset_plot_target!()
+    _PLOT_PREFIX[] = "current-plot"
+    return _PLOT_PREFIX[]
+end
+
+plot_path() = joinpath(CACHE_DIR, "$(_PLOT_PREFIX[]).png")
+plot_path(ext::AbstractString) = joinpath(CACHE_DIR, "$(_PLOT_PREFIX[]).$ext")
 
 auto_init_enabled() = _AUTO_INIT[]
 enable_auto_init!() = (_AUTO_INIT[] = true)
@@ -314,10 +348,10 @@ function setup_display!(; register_callback::Bool=true)
 end
 
 """
-    open_pane()
+    open_pane([target::AbstractString])
 
-Manually open the Zed plot pane. This is useful if the pane was closed
-and you want to re-open it without waiting for the next plot command.
+Manually open the Zed plot pane. If `target` is provided, sets the active
+target before opening.
 """
 function open_pane()
     _ensure_plot_files()
@@ -328,6 +362,11 @@ function open_pane()
         printstyled("[Zed] could not open viewer (is 'zed' in your PATH?)\n"; color=:red)
     end
     return nothing
+end
+
+function open_pane(target::AbstractString)
+    set_plot_target!(target)
+    return open_pane()
 end
 
 """

@@ -172,5 +172,43 @@ end
     @test read(ZedPlotPane.plot_path("gif")) == ZedPlotPane.BLANK_GIF
 end
 
+@testset "named plot targets (multi-pane)" begin
+    # Initial target should be current-plot
+    @test ZedPlotPane.plot_target() == "current-plot"
+
+    try
+        # Set a new target
+        @test ZedPlotPane.set_plot_target!("figure2") == "figure2"
+        @test ZedPlotPane.plot_target() == "figure2"
+        @test occursin("figure2.png", ZedPlotPane.plot_path())
+        @test occursin("figure2.svg", ZedPlotPane.plot_path("svg"))
+
+        # Writing mock plot to figure2
+        d = ZedPlotPane.ZedDisplay()
+        display(d, MockPNG())
+        @test isfile(ZedPlotPane.plot_path("png"))
+        @test read(ZedPlotPane.plot_path("png"), String) == "png-data"
+
+        # clear_pane clears figure2
+        clear_pane()
+        @test read(ZedPlotPane.plot_path("png")) == ZedPlotPane.BLANK_PNG
+
+        # open_pane with target
+        @test_nowarn open_pane("figure3")
+        @test ZedPlotPane.plot_target() == "figure3"
+        @test occursin("figure3.png", ZedPlotPane.plot_path())
+
+        # Validation checks
+        @test_throws ArgumentError ZedPlotPane.set_plot_target!("")
+        @test_throws ArgumentError ZedPlotPane.set_plot_target!("sub/dir")
+        @test_throws ArgumentError ZedPlotPane.set_plot_target!("sub\\dir")
+    finally
+        # Reset target back to current-plot
+        ZedPlotPane.reset_plot_target!()
+        @test ZedPlotPane.plot_target() == "current-plot"
+        @test occursin("current-plot.png", ZedPlotPane.plot_path())
+    end
+end
+
 # Integration tests against real plotting/data libraries (optional deps inside).
 include("integration.jl")
