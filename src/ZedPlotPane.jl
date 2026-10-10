@@ -17,6 +17,11 @@ export ZedDisplay,
     set_persistent_cache_dir!,
     set_persistent_auto_init!,
     set_persistent_history!,
+    rasterize_svg_enabled,
+    enable_rasterize_svg!,
+    disable_rasterize_svg!,
+    set_svg_rasterizer!,
+    set_persistent_rasterize_svg!,
     plot_path,
     setup_display!,
     register_display!,
@@ -112,6 +117,113 @@ function set_persistent_history!(enabled::Bool)
     enabled ? enable_history!() : disable_history!()
     printstyled("[Zed] Persistent preference 'history' updated. Restart Julia for compile-time constants to take effect.\n"; color=:yellow)
     return enabled
+end
+
+const _RASTERIZE_SVG = Ref{Bool}(@load_preference("rasterize_svg", false))
+const _CUSTOM_SVG_RASTERIZER = Ref{Any}(nothing)
+
+"""
+    rasterize_svg_enabled() -> Bool
+
+Check if rasterizing SVG plots to PNG for in-editor preview is enabled.
+"""
+rasterize_svg_enabled() = _RASTERIZE_SVG[]
+
+"""
+    enable_rasterize_svg!()
+
+Enable SVG to PNG rasterization for in-editor preview in Zed.
+"""
+enable_rasterize_svg!() = (_RASTERIZE_SVG[] = true)
+
+"""
+    disable_rasterize_svg!()
+
+Disable SVG to PNG rasterization (falls back to browser preview via HTML wrapper).
+"""
+disable_rasterize_svg!() = (_RASTERIZE_SVG[] = false)
+
+"""
+    set_svg_rasterizer!(fn)
+
+Register a custom SVG rasterizer function `fn(svg_path::String, png_path::String) -> Bool`.
+"""
+set_svg_rasterizer!(fn) = (_CUSTOM_SVG_RASTERIZER[] = fn)
+
+"""
+    set_persistent_rasterize_svg!(enabled::Bool)
+
+Persistently set the `rasterize_svg` preference via `Preferences.jl`.
+"""
+function set_persistent_rasterize_svg!(enabled::Bool)
+    @set_preferences!("rasterize_svg" => enabled)
+    enabled ? enable_rasterize_svg!() : disable_rasterize_svg!()
+    printstyled("[Zed] Persistent preference 'rasterize_svg' updated. Restart Julia for compile-time constants to take effect.\n"; color=:yellow)
+    return enabled
+end
+
+function _try_rasterize_svg(svg_path::AbstractString, png_path::AbstractString)
+    if !isfile(svg_path)
+        @debug "SVG rasterization skipped: source file does not exist" svg_path
+        return false
+    end
+
+    # 1. Custom hook if provided
+    if _CUSTOM_SVG_RASTERIZER[] !== nothing
+        try
+            success = _CUSTOM_SVG_RASTERIZER[](String(svg_path), String(png_path))
+            success && isfile(png_path) && return true
+        catch e
+            @debug "custom SVG rasterizer failed" exception = e
+        end
+    end
+
+    # 2. rsvg-convert (librsvg)
+    rsvg = Sys.which("rsvg-convert")
+    if rsvg !== nothing
+        try
+            run(pipeline(Cmd([rsvg, "-o", png_path, svg_path]); stdout=devnull, stderr=devnull))
+            # run() throws on a nonzero exit (no ignorestatus is used above), so
+            # reaching this line means the command already exited successfully.
+            isfile(png_path) && return true
+        catch e
+            @debug "rsvg-convert rasterization failed" exception = e
+        end
+    end
+
+    # 3. ImageMagick (magick or convert)
+    magick = Sys.which("magick")
+    if magick !== nothing
+        try
+            run(pipeline(Cmd([magick, svg_path, png_path]); stdout=devnull, stderr=devnull))
+            isfile(png_path) && return true
+        catch e
+            @debug "ImageMagick (magick) rasterization failed" exception = e
+        end
+    else
+        convert_cmd = Sys.which("convert")
+        if convert_cmd !== nothing
+            try
+                run(pipeline(Cmd([convert_cmd, svg_path, png_path]); stdout=devnull, stderr=devnull))
+                isfile(png_path) && return true
+            catch e
+                @debug "ImageMagick (convert) rasterization failed" exception = e
+            end
+        end
+    end
+
+    # 4. inkscape
+    inkscape = Sys.which("inkscape")
+    if inkscape !== nothing
+        try
+            run(pipeline(Cmd([inkscape, svg_path, "-o", png_path]); stdout=devnull, stderr=devnull))
+            isfile(png_path) && return true
+        catch e
+            @debug "inkscape rasterization failed" exception = e
+        end
+    end
+
+    return false
 end
 
 const BLANK_PNG = UInt8[
@@ -373,9 +485,36 @@ function Base.display(::ZedDisplay, x)
         ext = mime_to_ext(mime)
         path = plot_path(ext)
         _write_image(path, x, mime)
-        history_enabled() && _save_history(path, ext)
 
         if mime == MIME("image/svg+xml")
+            if rasterize_svg_enabled()
+                png_path = plot_path("png")
+                if _try_rasterize_svg(path, png_path)
+                    # The PNG is what actually gets displayed; remove the
+                    # now-unused SVG cache file instead of letting a stray
+                    # copy linger on disk, and save only the PNG to history
+                    # so a single plot doesn't produce duplicate entries.
+                    rm(path; force=true)
+                    history_enabled() && _save_history(png_path, "png")
+                    if png_path != _LAST_OPENED_PATH[]
+                        _LAST_OPENED_PATH[] = png_path
+                        if _open_viewer(png_path)
+                            printstyled("[Zed] rasterized SVG plot pane opened: $(png_path)\n"; color=:cyan)
+                        else
+                            printstyled("[Zed] rasterized SVG plot saved to $(png_path)\n"; color=:yellow)
+                        end
+                    else
+                        printstyled("[Zed] rasterized SVG plot updated\n"; color=:cyan)
+                    end
+                    return
+                end
+            end
+
+            # Rasterization is disabled, unavailable, or failed: the raw SVG
+            # is what actually gets displayed (via the HTML wrapper below),
+            # so it's the only file that should be saved to history.
+            history_enabled() && _save_history(path, ext)
+
             svg_content = read(path, String)
             html_wrapper = """
             <!DOCTYPE html>
@@ -408,6 +547,7 @@ function Base.display(::ZedDisplay, x)
             _open_in_browser(html_path)
             printstyled("[Zed] SVG plot opened in browser via HTML wrapper: $(html_path)\n"; color=:cyan)
         else
+            history_enabled() && _save_history(path, ext)
             if path != _LAST_OPENED_PATH[]
                 _LAST_OPENED_PATH[] = path
                 if _open_viewer(path)

@@ -267,6 +267,7 @@ end
     orig_dir = ZedPlotPane.cache_dir()
     orig_init = ZedPlotPane.auto_init_enabled()
     orig_hist = ZedPlotPane.history_enabled()
+    orig_rast = ZedPlotPane.rasterize_svg_enabled()
     tmpdir = mktempdir()
     try
         ZedPlotPane.set_persistent_cache_dir!(tmpdir)
@@ -291,11 +292,51 @@ end
         # directory instead). That round-trip is sufficient to catch a
         # silently-failing `@set_preferences!` call without hardcoding or
         # guessing Preferences.jl's internal file layout.
+
+        ZedPlotPane.set_persistent_rasterize_svg!(true)
+        @test ZedPlotPane.rasterize_svg_enabled()
+        @test Preferences.load_preference(ZedPlotPane, "rasterize_svg") == true
     finally
         ZedPlotPane.set_persistent_cache_dir!(orig_dir)
         ZedPlotPane.set_persistent_auto_init!(orig_init)
         ZedPlotPane.set_persistent_history!(orig_hist)
+        ZedPlotPane.set_persistent_rasterize_svg!(orig_rast)
         rm(tmpdir; recursive=true, force=true)
+    end
+end
+
+@testset "SVG rasterization fallback" begin
+    orig_rast = ZedPlotPane.rasterize_svg_enabled()
+    d = ZedPlotPane.ZedDisplay()
+    try
+        ZedPlotPane.disable_rasterize_svg!()
+        @test !ZedPlotPane.rasterize_svg_enabled()
+
+        # Without rasterization, MockSVG outputs to SVG and creates HTML wrapper
+        display(d, MockSVG())
+        @test read(ZedPlotPane.plot_path("svg"), String) == "svg-data"
+        @test occursin("<title>Zed Plot SVG Preview</title>", read(ZedPlotPane.plot_path("html"), String))
+
+        # Enable rasterization with custom mock rasterizer
+        ZedPlotPane.enable_rasterize_svg!()
+        @test ZedPlotPane.rasterize_svg_enabled()
+
+        ZedPlotPane.set_svg_rasterizer!((svg_path, png_path) -> begin
+            write(png_path, "mock-rasterized-png")
+            return true
+        end)
+
+        display(d, MockSVG())
+        @test read(ZedPlotPane.plot_path("png"), String) == "mock-rasterized-png"
+
+        # When custom rasterizer fails/returns false, falls back to HTML preview
+        write(ZedPlotPane.plot_path("html"), "pre-sentinel")
+        ZedPlotPane.set_svg_rasterizer!((svg_path, png_path) -> false)
+        display(d, MockSVG())
+        @test occursin("<title>Zed Plot SVG Preview</title>", read(ZedPlotPane.plot_path("html"), String))
+    finally
+        ZedPlotPane.set_svg_rasterizer!(nothing)
+        orig_rast ? ZedPlotPane.enable_rasterize_svg!() : ZedPlotPane.disable_rasterize_svg!()
     end
 end
 
