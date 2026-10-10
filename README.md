@@ -170,7 +170,34 @@ set_persistent_auto_init!(false)
 
 # Persistently enable plot history by default
 set_persistent_history!(true)
+
+# Persistently enable SVG to PNG rasterization
+set_persistent_rasterize_svg!(true)
 ```
+
+## SVG in-editor display (Rasterization fallback)
+
+By default, SVG plots are wrapped in HTML and opened in your browser for full fidelity. If you prefer previewing SVG plots entirely inside Zed without external browser windows, you can enable SVG rasterization:
+
+```julia
+using ZedPlotPane
+
+# Enable automatic SVG to PNG rasterization
+enable_rasterize_svg!()
+```
+
+When enabled, `ZedPlotPane` attempts to rasterize SVGs to PNG using available system tools (`rsvg-convert`, ImageMagick `magick`/`convert`, or `inkscape`), or a custom rasterizer function:
+
+```julia
+# Optional: register a custom rasterizer function (e.g. using Rsvg.jl or Resvg.jl)
+set_svg_rasterizer!((svg_path, png_path) -> begin
+    # convert svg_path to png_path
+    return true # return true on success
+end)
+```
+
+If rasterization is unavailable or fails, it gracefully falls back to opening the HTML preview in the browser.
+
 
 
 
