@@ -210,5 +210,79 @@ end
     end
 end
 
+@testset "cache_dir configuration" begin
+    orig_dir = ZedPlotPane.cache_dir()
+    tmpdir = mktempdir()
+    try
+        @test ZedPlotPane.set_cache_dir!(tmpdir) == tmpdir
+        @test ZedPlotPane.cache_dir() == tmpdir
+        @test startswith(ZedPlotPane.plot_path(), tmpdir)
+        @test ZedPlotPane.history_dir() == joinpath(tmpdir, "history")
+    finally
+        ZedPlotPane.set_cache_dir!(orig_dir)
+        rm(tmpdir; recursive=true, force=true)
+    end
+end
+
+@testset "plot history" begin
+    orig_dir = ZedPlotPane.cache_dir()
+    orig_hist = ZedPlotPane.history_enabled()
+    tmpdir = mktempdir()
+    try
+        ZedPlotPane.set_cache_dir!(tmpdir)
+        ZedPlotPane.disable_history!()
+        @test !ZedPlotPane.history_enabled()
+        ZedPlotPane.enable_history!()
+        @test ZedPlotPane.history_enabled()
+
+        d = ZedPlotPane.ZedDisplay()
+        display(d, MockPNG())
+
+        hdir = ZedPlotPane.history_dir()
+        @test isdir(hdir)
+        png_files = filter(f -> endswith(f, ".png"), readdir(hdir))
+        @test length(png_files) == 1
+        @test startswith(png_files[1], "current-plot_")
+
+        display(d, MockHTML())
+        html_files = filter(f -> endswith(f, ".html"), readdir(hdir))
+        @test length(html_files) == 1
+        @test startswith(html_files[1], "current-plot_")
+
+        # Disable history and ensure no new history file is created
+        ZedPlotPane.disable_history!()
+        @test !ZedPlotPane.history_enabled()
+        display(d, MockGIF())
+        gif_files = filter(f -> endswith(f, ".gif"), readdir(hdir))
+        @test isempty(gif_files)
+    finally
+        orig_hist ? ZedPlotPane.enable_history!() : ZedPlotPane.disable_history!()
+        ZedPlotPane.set_cache_dir!(orig_dir)
+        rm(tmpdir; recursive=true, force=true)
+    end
+end
+
+@testset "persistent preferences" begin
+    orig_dir = ZedPlotPane.cache_dir()
+    orig_init = ZedPlotPane.auto_init_enabled()
+    orig_hist = ZedPlotPane.history_enabled()
+    tmpdir = mktempdir()
+    try
+        ZedPlotPane.set_persistent_cache_dir!(tmpdir)
+        @test ZedPlotPane.cache_dir() == tmpdir
+
+        ZedPlotPane.set_persistent_auto_init!(false)
+        @test !ZedPlotPane.auto_init_enabled()
+
+        ZedPlotPane.set_persistent_history!(true)
+        @test ZedPlotPane.history_enabled()
+    finally
+        ZedPlotPane.set_persistent_cache_dir!(orig_dir)
+        ZedPlotPane.set_persistent_auto_init!(orig_init)
+        ZedPlotPane.set_persistent_history!(orig_hist)
+        rm(tmpdir; recursive=true, force=true)
+    end
+end
+
 # Integration tests against real plotting/data libraries (optional deps inside).
 include("integration.jl")
