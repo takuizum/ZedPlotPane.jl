@@ -117,6 +117,90 @@ using ZedPlotPane
 clear_pane()
 ```
 
+## Named Plot Panes (Multi-pane support)
+
+Route plots to different files to open multiple plots in separate tabs or side-by-side split panes in Zed:
+
+```julia
+using ZedPlotPane
+
+# Route subsequent plots to "figure2.png"
+set_plot_target!("figure2")
+# plot(...) -> updates ~/.cache/zed-julia/figure2.png
+
+# Revert to the default target ("current-plot.png")
+reset_plot_target!()
+```
+
+You can also open or switch targets directly:
+
+```julia
+open_pane("figure2")
+```
+
+## Plot History
+
+Save timestamped copies of your plots automatically (stored in `~/.cache/zed-julia/history/`):
+
+```julia
+using ZedPlotPane
+
+# Enable history tracking
+enable_history!()
+
+# Check history directory
+println(history_dir())
+
+# Disable history tracking
+disable_history!()
+```
+
+## Persistent Configuration
+
+Settings can be persisted across Julia sessions via `Preferences.jl`:
+
+```julia
+using ZedPlotPane
+
+# Persistently set the cache directory
+set_persistent_cache_dir!("~/my-project/plots")
+
+# Persistently configure auto-init
+set_persistent_auto_init!(false)
+
+# Persistently enable plot history by default
+set_persistent_history!(true)
+
+# Persistently enable SVG to PNG rasterization
+set_persistent_rasterize_svg!(true)
+```
+
+## SVG in-editor display (Rasterization fallback)
+
+By default, SVG plots are wrapped in HTML and opened in your browser for full fidelity. If you prefer previewing SVG plots entirely inside Zed without external browser windows, you can enable SVG rasterization:
+
+```julia
+using ZedPlotPane
+
+# Enable automatic SVG to PNG rasterization
+enable_rasterize_svg!()
+```
+
+When enabled, `ZedPlotPane` attempts to rasterize SVGs to PNG using available system tools (`rsvg-convert`, ImageMagick `magick`/`convert`, or `inkscape`), or a custom rasterizer function:
+
+```julia
+# Optional: register a custom rasterizer function (e.g. using Rsvg.jl or Resvg.jl)
+set_svg_rasterizer!((svg_path, png_path) -> begin
+    # convert svg_path to png_path
+    return true # return true on success
+end)
+```
+
+If rasterization is unavailable or fails, it gracefully falls back to opening the HTML preview in the browser.
+
+
+
+
 
 ## Notes
 

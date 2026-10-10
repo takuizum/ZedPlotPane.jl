@@ -1,17 +1,230 @@
 module ZedPlotPane
 
+using Dates
+using Preferences
+using Random
+
 export ZedDisplay,
     auto_init_enabled,
     disable_auto_init!,
     enable_auto_init!,
+    cache_dir,
+    set_cache_dir!,
+    history_enabled,
+    enable_history!,
+    disable_history!,
+    history_dir,
+    set_persistent_cache_dir!,
+    set_persistent_auto_init!,
+    set_persistent_history!,
+    rasterize_svg_enabled,
+    enable_rasterize_svg!,
+    disable_rasterize_svg!,
+    set_svg_rasterizer!,
+    set_persistent_rasterize_svg!,
     plot_path,
     setup_display!,
     register_display!,
     setup_environment!,
     open_pane,
-    clear_pane
+    clear_pane,
+    plot_target,
+    set_plot_target!,
+    reset_plot_target!
 
 const CACHE_DIR = expanduser("~/.cache/zed-julia")
+const _CACHE_DIR = Ref{String}(@load_preference("cache_dir", CACHE_DIR))
+
+"""
+    cache_dir() -> String
+
+Return the directory where plot files and history are stored.
+"""
+cache_dir() = _CACHE_DIR[]
+
+"""
+    set_cache_dir!(path::AbstractString)
+
+Set the active runtime cache directory.
+"""
+function set_cache_dir!(path::AbstractString)
+    _CACHE_DIR[] = abspath(expanduser(path))
+    return _CACHE_DIR[]
+end
+
+const _HISTORY_ENABLED = Ref{Bool}(@load_preference("history", false))
+
+"""
+    history_enabled() -> Bool
+
+Check if saving plot history is enabled.
+"""
+history_enabled() = _HISTORY_ENABLED[]
+
+"""
+    enable_history!()
+
+Enable saving timestamped copies of plots to the history folder.
+"""
+enable_history!() = (_HISTORY_ENABLED[] = true)
+
+"""
+    disable_history!()
+
+Disable saving timestamped copies of plots to the history folder.
+"""
+disable_history!() = (_HISTORY_ENABLED[] = false)
+
+"""
+    history_dir() -> String
+
+Return the directory path where historical plots are saved.
+"""
+history_dir() = joinpath(cache_dir(), "history")
+
+"""
+    set_persistent_cache_dir!(path::AbstractString)
+
+Persistently set the `cache_dir` preference via `Preferences.jl`.
+"""
+function set_persistent_cache_dir!(path::AbstractString)
+    resolved = abspath(expanduser(path))
+    @set_preferences!("cache_dir" => resolved)
+    set_cache_dir!(resolved)
+    printstyled("[Zed] Persistent preference 'cache_dir' updated. Restart Julia for compile-time constants to take effect.\n"; color=:yellow)
+    return resolved
+end
+
+"""
+    set_persistent_auto_init!(enabled::Bool)
+
+Persistently set the `auto_init` preference via `Preferences.jl`.
+"""
+function set_persistent_auto_init!(enabled::Bool)
+    @set_preferences!("auto_init" => enabled)
+    enabled ? enable_auto_init!() : disable_auto_init!()
+    printstyled("[Zed] Persistent preference 'auto_init' updated. Restart Julia for compile-time constants to take effect.\n"; color=:yellow)
+    return enabled
+end
+
+"""
+    set_persistent_history!(enabled::Bool)
+
+Persistently set the `history` preference via `Preferences.jl`.
+"""
+function set_persistent_history!(enabled::Bool)
+    @set_preferences!("history" => enabled)
+    enabled ? enable_history!() : disable_history!()
+    printstyled("[Zed] Persistent preference 'history' updated. Restart Julia for compile-time constants to take effect.\n"; color=:yellow)
+    return enabled
+end
+
+const _RASTERIZE_SVG = Ref{Bool}(@load_preference("rasterize_svg", false))
+const _CUSTOM_SVG_RASTERIZER = Ref{Any}(nothing)
+
+"""
+    rasterize_svg_enabled() -> Bool
+
+Check if rasterizing SVG plots to PNG for in-editor preview is enabled.
+"""
+rasterize_svg_enabled() = _RASTERIZE_SVG[]
+
+"""
+    enable_rasterize_svg!()
+
+Enable SVG to PNG rasterization for in-editor preview in Zed.
+"""
+enable_rasterize_svg!() = (_RASTERIZE_SVG[] = true)
+
+"""
+    disable_rasterize_svg!()
+
+Disable SVG to PNG rasterization (falls back to browser preview via HTML wrapper).
+"""
+disable_rasterize_svg!() = (_RASTERIZE_SVG[] = false)
+
+"""
+    set_svg_rasterizer!(fn)
+
+Register a custom SVG rasterizer function `fn(svg_path::String, png_path::String) -> Bool`.
+"""
+set_svg_rasterizer!(fn) = (_CUSTOM_SVG_RASTERIZER[] = fn)
+
+"""
+    set_persistent_rasterize_svg!(enabled::Bool)
+
+Persistently set the `rasterize_svg` preference via `Preferences.jl`.
+"""
+function set_persistent_rasterize_svg!(enabled::Bool)
+    @set_preferences!("rasterize_svg" => enabled)
+    enabled ? enable_rasterize_svg!() : disable_rasterize_svg!()
+    printstyled("[Zed] Persistent preference 'rasterize_svg' updated. Restart Julia for compile-time constants to take effect.\n"; color=:yellow)
+    return enabled
+end
+
+function _try_rasterize_svg(svg_path::AbstractString, png_path::AbstractString)
+    if !isfile(svg_path)
+        @debug "SVG rasterization skipped: source file does not exist" svg_path
+        return false
+    end
+
+    # 1. Custom hook if provided
+    if _CUSTOM_SVG_RASTERIZER[] !== nothing
+        try
+            success = _CUSTOM_SVG_RASTERIZER[](String(svg_path), String(png_path))
+            success && isfile(png_path) && return true
+        catch e
+            @debug "custom SVG rasterizer failed" exception = e
+        end
+    end
+
+    # 2. rsvg-convert (librsvg)
+    rsvg = Sys.which("rsvg-convert")
+    if rsvg !== nothing
+        try
+            run(pipeline(Cmd([rsvg, "-o", png_path, svg_path]); stdout=devnull, stderr=devnull))
+            # run() throws on a nonzero exit (no ignorestatus is used above), so
+            # reaching this line means the command already exited successfully.
+            isfile(png_path) && return true
+        catch e
+            @debug "rsvg-convert rasterization failed" exception = e
+        end
+    end
+
+    # 3. ImageMagick (magick or convert)
+    magick = Sys.which("magick")
+    if magick !== nothing
+        try
+            run(pipeline(Cmd([magick, svg_path, png_path]); stdout=devnull, stderr=devnull))
+            isfile(png_path) && return true
+        catch e
+            @debug "ImageMagick (magick) rasterization failed" exception = e
+        end
+    else
+        convert_cmd = Sys.which("convert")
+        if convert_cmd !== nothing
+            try
+                run(pipeline(Cmd([convert_cmd, svg_path, png_path]); stdout=devnull, stderr=devnull))
+                isfile(png_path) && return true
+            catch e
+                @debug "ImageMagick (convert) rasterization failed" exception = e
+            end
+        end
+    end
+
+    # 4. inkscape
+    inkscape = Sys.which("inkscape")
+    if inkscape !== nothing
+        try
+            run(pipeline(Cmd([inkscape, svg_path, "-o", png_path]); stdout=devnull, stderr=devnull))
+            isfile(png_path) && return true
+        catch e
+            @debug "inkscape rasterization failed" exception = e
+        end
+    end
+
+    return false
+end
 
 const BLANK_PNG = UInt8[
     0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
@@ -36,18 +249,87 @@ const BLANK_GIF = UInt8[
 struct ZedDisplay <: AbstractDisplay end
 Base.displayable(::ZedDisplay, mime::MIME) = string(mime) in ("image/png", "image/jpeg", "image/gif", "text/html", "image/svg+xml")
 const _LAST_OPENED_PATH = Ref{String}("")
-const _AUTO_INIT = Ref(true)
+const _AUTO_INIT = Ref{Bool}(@load_preference("auto_init", true))
 const _CALLBACK_REGISTERED = Ref(false)
+const _PLOT_PREFIX = Ref{String}("current-plot")
 
-plot_path() = joinpath(CACHE_DIR, "current-plot.png")
-plot_path(ext::AbstractString) = joinpath(CACHE_DIR, "current-plot.$ext")
+"""
+    plot_target() -> String
+
+Return the current plot target file prefix (default: `"current-plot"`).
+"""
+plot_target() = _PLOT_PREFIX[]
+
+"""
+    set_plot_target!(name::AbstractString)
+
+Set the active plot target file prefix (e.g. `"figure2"`). Subsequent plots
+will be written to `<name>.<ext>`, allowing them to be opened in separate panes or tabs.
+"""
+function set_plot_target!(name::AbstractString)
+    isempty(name) && throw(ArgumentError("Plot target name cannot be empty"))
+    (occursin('/', name) || occursin('\\', name)) && throw(ArgumentError("Plot target name cannot contain path separators ('/' or '\\')"))
+    _PLOT_PREFIX[] = String(name)
+    return _PLOT_PREFIX[]
+end
+
+"""
+    reset_plot_target!()
+
+Reset the plot target file prefix back to `"current-plot"`.
+"""
+function reset_plot_target!()
+    _PLOT_PREFIX[] = "current-plot"
+    return _PLOT_PREFIX[]
+end
+
+plot_path() = joinpath(cache_dir(), "$(_PLOT_PREFIX[]).png")
+plot_path(ext::AbstractString) = joinpath(cache_dir(), "$(_PLOT_PREFIX[]).$ext")
 
 auto_init_enabled() = _AUTO_INIT[]
 enable_auto_init!() = (_AUTO_INIT[] = true)
 disable_auto_init!() = (_AUTO_INIT[] = false)
 
+function _save_history(path::AbstractString, ext::AbstractString)
+    try
+        hdir = history_dir()
+        isdir(hdir) || mkpath(hdir)
+        timestamp = Dates.format(Dates.now(), "yyyymmdd_HHMMSS_sss")
+        base_filename = "$(_PLOT_PREFIX[])_$(timestamp)"
+        hist_path = joinpath(hdir, "$(base_filename).$ext")
+
+        # Guard against filename collisions: the millisecond-resolution
+        # timestamp can repeat for rapid successive plots, which would
+        # otherwise silently overwrite a previous history entry. Append an
+        # incrementing counter, then a random suffix, before falling back to
+        # overwriting as a last resort.
+        if ispath(hist_path)
+            found = false
+            for i in 1:99
+                candidate = joinpath(hdir, "$(base_filename)_$(i).$ext")
+                if !ispath(candidate)
+                    hist_path = candidate
+                    found = true
+                    break
+                end
+            end
+            if !found
+                suffix = Random.randstring(8)
+                hist_path = joinpath(hdir, "$(base_filename)_$(suffix).$ext")
+            end
+        end
+
+        cp(path, hist_path; force=true)
+        return hist_path
+    catch err
+        @warn "Failed to save plot history" exception=(err, catch_backtrace())
+        return nothing
+    end
+end
+
 function _ensure_plot_files()
-    isdir(CACHE_DIR) || mkpath(CACHE_DIR)
+    cdir = cache_dir()
+    isdir(cdir) || mkpath(cdir)
     isfile(plot_path("png")) || write(plot_path("png"), BLANK_PNG)
     isfile(plot_path("svg")) || write(plot_path("svg"), BLANK_SVG)
     isfile(plot_path("html")) || write(plot_path("html"), BLANK_HTML)
@@ -194,6 +476,7 @@ function Base.display(::ZedDisplay, x)
             _is_interactive_html(html) || continue
             path = plot_path("html")
             write(path, html)
+            history_enabled() && _save_history(path, "html")
             _open_in_browser(path)
             printstyled("[Zed] dynamic plot opened in browser: $(path)\n"; color=:cyan)
             return
@@ -204,6 +487,34 @@ function Base.display(::ZedDisplay, x)
         _write_image(path, x, mime)
 
         if mime == MIME("image/svg+xml")
+            if rasterize_svg_enabled()
+                png_path = plot_path("png")
+                if _try_rasterize_svg(path, png_path)
+                    # The PNG is what actually gets displayed; remove the
+                    # now-unused SVG cache file instead of letting a stray
+                    # copy linger on disk, and save only the PNG to history
+                    # so a single plot doesn't produce duplicate entries.
+                    rm(path; force=true)
+                    history_enabled() && _save_history(png_path, "png")
+                    if png_path != _LAST_OPENED_PATH[]
+                        _LAST_OPENED_PATH[] = png_path
+                        if _open_viewer(png_path)
+                            printstyled("[Zed] rasterized SVG plot pane opened: $(png_path)\n"; color=:cyan)
+                        else
+                            printstyled("[Zed] rasterized SVG plot saved to $(png_path)\n"; color=:yellow)
+                        end
+                    else
+                        printstyled("[Zed] rasterized SVG plot updated\n"; color=:cyan)
+                    end
+                    return
+                end
+            end
+
+            # Rasterization is disabled, unavailable, or failed: the raw SVG
+            # is what actually gets displayed (via the HTML wrapper below),
+            # so it's the only file that should be saved to history.
+            history_enabled() && _save_history(path, ext)
+
             svg_content = read(path, String)
             html_wrapper = """
             <!DOCTYPE html>
@@ -236,6 +547,7 @@ function Base.display(::ZedDisplay, x)
             _open_in_browser(html_path)
             printstyled("[Zed] SVG plot opened in browser via HTML wrapper: $(html_path)\n"; color=:cyan)
         else
+            history_enabled() && _save_history(path, ext)
             if path != _LAST_OPENED_PATH[]
                 _LAST_OPENED_PATH[] = path
                 if _open_viewer(path)
@@ -314,10 +626,10 @@ function setup_display!(; register_callback::Bool=true)
 end
 
 """
-    open_pane()
+    open_pane([target::AbstractString])
 
-Manually open the Zed plot pane. This is useful if the pane was closed
-and you want to re-open it without waiting for the next plot command.
+Manually open the Zed plot pane. If `target` is provided, sets the active
+target before opening.
 """
 function open_pane()
     _ensure_plot_files()
@@ -330,6 +642,11 @@ function open_pane()
     return nothing
 end
 
+function open_pane(target::AbstractString)
+    set_plot_target!(target)
+    return open_pane()
+end
+
 """
     clear_pane()
 
@@ -337,7 +654,8 @@ Clear the plot pane by overwriting current plot files with blank content.
 This triggers Zed's file watcher to refresh the pane with an empty view.
 """
 function clear_pane()
-    isdir(CACHE_DIR) || mkpath(CACHE_DIR)
+    cdir = cache_dir()
+    isdir(cdir) || mkpath(cdir)
     write(plot_path("png"), BLANK_PNG)
     write(plot_path("svg"), BLANK_SVG)
     write(plot_path("html"), BLANK_HTML)

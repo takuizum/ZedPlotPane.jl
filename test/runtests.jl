@@ -1,5 +1,6 @@
 using Test
 using ZedPlotPane
+using Preferences
 
 # Ensure we don't open actual windows/browsers during testing
 ENV["ZED_PLOT_PANE_TESTING"] = "true"
@@ -170,6 +171,173 @@ end
     @test read(ZedPlotPane.plot_path("svg"), String) == ZedPlotPane.BLANK_SVG
     @test read(ZedPlotPane.plot_path("html"), String) == ZedPlotPane.BLANK_HTML
     @test read(ZedPlotPane.plot_path("gif")) == ZedPlotPane.BLANK_GIF
+end
+
+@testset "named plot targets (multi-pane)" begin
+    # Initial target should be current-plot
+    @test ZedPlotPane.plot_target() == "current-plot"
+
+    try
+        # Set a new target
+        @test ZedPlotPane.set_plot_target!("figure2") == "figure2"
+        @test ZedPlotPane.plot_target() == "figure2"
+        @test occursin("figure2.png", ZedPlotPane.plot_path())
+        @test occursin("figure2.svg", ZedPlotPane.plot_path("svg"))
+
+        # Writing mock plot to figure2
+        d = ZedPlotPane.ZedDisplay()
+        display(d, MockPNG())
+        @test isfile(ZedPlotPane.plot_path("png"))
+        @test read(ZedPlotPane.plot_path("png"), String) == "png-data"
+
+        # clear_pane clears figure2
+        clear_pane()
+        @test read(ZedPlotPane.plot_path("png")) == ZedPlotPane.BLANK_PNG
+
+        # open_pane with target
+        @test_nowarn open_pane("figure3")
+        @test ZedPlotPane.plot_target() == "figure3"
+        @test occursin("figure3.png", ZedPlotPane.plot_path())
+
+        # Validation checks
+        @test_throws ArgumentError ZedPlotPane.set_plot_target!("")
+        @test_throws ArgumentError ZedPlotPane.set_plot_target!("sub/dir")
+        @test_throws ArgumentError ZedPlotPane.set_plot_target!("sub\\dir")
+    finally
+        # Reset target back to current-plot
+        ZedPlotPane.reset_plot_target!()
+        @test ZedPlotPane.plot_target() == "current-plot"
+        @test occursin("current-plot.png", ZedPlotPane.plot_path())
+    end
+end
+
+@testset "cache_dir configuration" begin
+    orig_dir = ZedPlotPane.cache_dir()
+    tmpdir = mktempdir()
+    try
+        @test ZedPlotPane.set_cache_dir!(tmpdir) == tmpdir
+        @test ZedPlotPane.cache_dir() == tmpdir
+        @test startswith(ZedPlotPane.plot_path(), tmpdir)
+        @test ZedPlotPane.history_dir() == joinpath(tmpdir, "history")
+    finally
+        ZedPlotPane.set_cache_dir!(orig_dir)
+        rm(tmpdir; recursive=true, force=true)
+    end
+end
+
+@testset "plot history" begin
+    orig_dir = ZedPlotPane.cache_dir()
+    orig_hist = ZedPlotPane.history_enabled()
+    tmpdir = mktempdir()
+    try
+        ZedPlotPane.set_cache_dir!(tmpdir)
+        ZedPlotPane.disable_history!()
+        @test !ZedPlotPane.history_enabled()
+        ZedPlotPane.enable_history!()
+        @test ZedPlotPane.history_enabled()
+
+        d = ZedPlotPane.ZedDisplay()
+        display(d, MockPNG())
+
+        hdir = ZedPlotPane.history_dir()
+        @test isdir(hdir)
+        png_files = filter(f -> endswith(f, ".png"), readdir(hdir))
+        @test length(png_files) == 1
+        @test startswith(png_files[1], "current-plot_")
+
+        display(d, MockHTML())
+        html_files = filter(f -> endswith(f, ".html"), readdir(hdir))
+        @test length(html_files) == 1
+        @test startswith(html_files[1], "current-plot_")
+
+        # Disable history and ensure no new history file is created
+        ZedPlotPane.disable_history!()
+        @test !ZedPlotPane.history_enabled()
+        display(d, MockGIF())
+        gif_files = filter(f -> endswith(f, ".gif"), readdir(hdir))
+        @test isempty(gif_files)
+    finally
+        orig_hist ? ZedPlotPane.enable_history!() : ZedPlotPane.disable_history!()
+        ZedPlotPane.set_cache_dir!(orig_dir)
+        rm(tmpdir; recursive=true, force=true)
+    end
+end
+
+@testset "persistent preferences" begin
+    orig_dir = ZedPlotPane.cache_dir()
+    orig_init = ZedPlotPane.auto_init_enabled()
+    orig_hist = ZedPlotPane.history_enabled()
+    orig_rast = ZedPlotPane.rasterize_svg_enabled()
+    tmpdir = mktempdir()
+    try
+        ZedPlotPane.set_persistent_cache_dir!(tmpdir)
+        @test ZedPlotPane.cache_dir() == tmpdir
+        # Confirm the preference was actually persisted (e.g. to
+        # LocalPreferences.toml), not just reflected in the in-memory Ref.
+        @test Preferences.load_preference(ZedPlotPane, "cache_dir") == tmpdir
+
+        ZedPlotPane.set_persistent_auto_init!(false)
+        @test !ZedPlotPane.auto_init_enabled()
+        @test Preferences.load_preference(ZedPlotPane, "auto_init") == false
+
+        ZedPlotPane.set_persistent_history!(true)
+        @test ZedPlotPane.history_enabled()
+        @test Preferences.load_preference(ZedPlotPane, "history") == true
+
+        # `Preferences.load_preference` above round-trips through whatever
+        # file Preferences.jl actually wrote to (its resolution of "the
+        # project that depends on this package" does not always match
+        # `dirname(Base.active_project())` — e.g. under `Pkg.test()`'s
+        # sandboxed temp environment it can resolve to the package's own
+        # directory instead). That round-trip is sufficient to catch a
+        # silently-failing `@set_preferences!` call without hardcoding or
+        # guessing Preferences.jl's internal file layout.
+
+        ZedPlotPane.set_persistent_rasterize_svg!(true)
+        @test ZedPlotPane.rasterize_svg_enabled()
+        @test Preferences.load_preference(ZedPlotPane, "rasterize_svg") == true
+    finally
+        ZedPlotPane.set_persistent_cache_dir!(orig_dir)
+        ZedPlotPane.set_persistent_auto_init!(orig_init)
+        ZedPlotPane.set_persistent_history!(orig_hist)
+        ZedPlotPane.set_persistent_rasterize_svg!(orig_rast)
+        rm(tmpdir; recursive=true, force=true)
+    end
+end
+
+@testset "SVG rasterization fallback" begin
+    orig_rast = ZedPlotPane.rasterize_svg_enabled()
+    d = ZedPlotPane.ZedDisplay()
+    try
+        ZedPlotPane.disable_rasterize_svg!()
+        @test !ZedPlotPane.rasterize_svg_enabled()
+
+        # Without rasterization, MockSVG outputs to SVG and creates HTML wrapper
+        display(d, MockSVG())
+        @test read(ZedPlotPane.plot_path("svg"), String) == "svg-data"
+        @test occursin("<title>Zed Plot SVG Preview</title>", read(ZedPlotPane.plot_path("html"), String))
+
+        # Enable rasterization with custom mock rasterizer
+        ZedPlotPane.enable_rasterize_svg!()
+        @test ZedPlotPane.rasterize_svg_enabled()
+
+        ZedPlotPane.set_svg_rasterizer!((svg_path, png_path) -> begin
+            write(png_path, "mock-rasterized-png")
+            return true
+        end)
+
+        display(d, MockSVG())
+        @test read(ZedPlotPane.plot_path("png"), String) == "mock-rasterized-png"
+
+        # When custom rasterizer fails/returns false, falls back to HTML preview
+        write(ZedPlotPane.plot_path("html"), "pre-sentinel")
+        ZedPlotPane.set_svg_rasterizer!((svg_path, png_path) -> false)
+        display(d, MockSVG())
+        @test occursin("<title>Zed Plot SVG Preview</title>", read(ZedPlotPane.plot_path("html"), String))
+    finally
+        ZedPlotPane.set_svg_rasterizer!(nothing)
+        orig_rast ? ZedPlotPane.enable_rasterize_svg!() : ZedPlotPane.disable_rasterize_svg!()
+    end
 end
 
 # Integration tests against real plotting/data libraries (optional deps inside).
