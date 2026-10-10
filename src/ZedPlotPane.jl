@@ -8,7 +8,8 @@ export ZedDisplay,
     setup_display!,
     register_display!,
     setup_environment!,
-    open_pane
+    open_pane,
+    clear_pane
 
 const CACHE_DIR = expanduser("~/.cache/zed-julia")
 
@@ -326,6 +327,22 @@ function open_pane()
     else
         printstyled("[Zed] could not open viewer (is 'zed' in your PATH?)\n"; color=:red)
     end
+    return nothing
+end
+
+"""
+    clear_pane()
+
+Clear the plot pane by overwriting current plot files with blank content.
+This triggers Zed's file watcher to refresh the pane with an empty view.
+"""
+function clear_pane()
+    isdir(CACHE_DIR) || mkpath(CACHE_DIR)
+    write(plot_path("png"), BLANK_PNG)
+    write(plot_path("svg"), BLANK_SVG)
+    write(plot_path("html"), BLANK_HTML)
+    write(plot_path("gif"), BLANK_GIF)
+    printstyled("[Zed] plot pane cleared\n"; color=:cyan)
     return nothing
 end
 

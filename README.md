@@ -108,6 +108,16 @@ using ZedPlotPane
 open_pane()
 ```
 
+## Clearing the plot pane
+
+You can programmatically clear the plot pane to reset the view:
+
+```julia
+using ZedPlotPane
+clear_pane()
+```
+
+
 ## Notes
 
 - If the `zed` command is not available in your `PATH`, the package automatically searches for `/Applications/Zed.app/Contents/MacOS/cli` and falls back to using the macOS `open -a Zed` command.
