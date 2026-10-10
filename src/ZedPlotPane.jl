@@ -163,12 +163,18 @@ function set_persistent_rasterize_svg!(enabled::Bool)
 end
 
 function _try_rasterize_svg(svg_path::AbstractString, png_path::AbstractString)
+    if !isfile(svg_path)
+        @debug "SVG rasterization skipped: source file does not exist" svg_path
+        return false
+    end
+
     # 1. Custom hook if provided
     if _CUSTOM_SVG_RASTERIZER[] !== nothing
         try
             success = _CUSTOM_SVG_RASTERIZER[](String(svg_path), String(png_path))
             success && isfile(png_path) && return true
-        catch
+        catch e
+            @debug "custom SVG rasterizer failed" exception = e
         end
     end
 
@@ -176,9 +182,12 @@ function _try_rasterize_svg(svg_path::AbstractString, png_path::AbstractString)
     rsvg = Sys.which("rsvg-convert")
     if rsvg !== nothing
         try
-            p = run(pipeline(Cmd([rsvg, "-o", png_path, svg_path]); stdout=devnull, stderr=devnull))
-            p.exitcode == 0 && isfile(png_path) && return true
-        catch
+            run(pipeline(Cmd([rsvg, "-o", png_path, svg_path]); stdout=devnull, stderr=devnull))
+            # run() throws on a nonzero exit (no ignorestatus is used above), so
+            # reaching this line means the command already exited successfully.
+            isfile(png_path) && return true
+        catch e
+            @debug "rsvg-convert rasterization failed" exception = e
         end
     end
 
@@ -186,17 +195,19 @@ function _try_rasterize_svg(svg_path::AbstractString, png_path::AbstractString)
     magick = Sys.which("magick")
     if magick !== nothing
         try
-            p = run(pipeline(Cmd([magick, svg_path, png_path]); stdout=devnull, stderr=devnull))
-            p.exitcode == 0 && isfile(png_path) && return true
-        catch
+            run(pipeline(Cmd([magick, svg_path, png_path]); stdout=devnull, stderr=devnull))
+            isfile(png_path) && return true
+        catch e
+            @debug "ImageMagick (magick) rasterization failed" exception = e
         end
     else
         convert_cmd = Sys.which("convert")
         if convert_cmd !== nothing
             try
-                p = run(pipeline(Cmd([convert_cmd, svg_path, png_path]); stdout=devnull, stderr=devnull))
-                p.exitcode == 0 && isfile(png_path) && return true
-            catch
+                run(pipeline(Cmd([convert_cmd, svg_path, png_path]); stdout=devnull, stderr=devnull))
+                isfile(png_path) && return true
+            catch e
+                @debug "ImageMagick (convert) rasterization failed" exception = e
             end
         end
     end
@@ -205,9 +216,10 @@ function _try_rasterize_svg(svg_path::AbstractString, png_path::AbstractString)
     inkscape = Sys.which("inkscape")
     if inkscape !== nothing
         try
-            p = run(pipeline(Cmd([inkscape, svg_path, "-o", png_path]); stdout=devnull, stderr=devnull))
-            p.exitcode == 0 && isfile(png_path) && return true
-        catch
+            run(pipeline(Cmd([inkscape, svg_path, "-o", png_path]); stdout=devnull, stderr=devnull))
+            isfile(png_path) && return true
+        catch e
+            @debug "inkscape rasterization failed" exception = e
         end
     end
 
@@ -473,12 +485,16 @@ function Base.display(::ZedDisplay, x)
         ext = mime_to_ext(mime)
         path = plot_path(ext)
         _write_image(path, x, mime)
-        history_enabled() && _save_history(path, ext)
 
         if mime == MIME("image/svg+xml")
             if rasterize_svg_enabled()
                 png_path = plot_path("png")
                 if _try_rasterize_svg(path, png_path)
+                    # The PNG is what actually gets displayed; remove the
+                    # now-unused SVG cache file instead of letting a stray
+                    # copy linger on disk, and save only the PNG to history
+                    # so a single plot doesn't produce duplicate entries.
+                    rm(path; force=true)
                     history_enabled() && _save_history(png_path, "png")
                     if png_path != _LAST_OPENED_PATH[]
                         _LAST_OPENED_PATH[] = png_path
@@ -493,6 +509,11 @@ function Base.display(::ZedDisplay, x)
                     return
                 end
             end
+
+            # Rasterization is disabled, unavailable, or failed: the raw SVG
+            # is what actually gets displayed (via the HTML wrapper below),
+            # so it's the only file that should be saved to history.
+            history_enabled() && _save_history(path, ext)
 
             svg_content = read(path, String)
             html_wrapper = """
@@ -526,6 +547,7 @@ function Base.display(::ZedDisplay, x)
             _open_in_browser(html_path)
             printstyled("[Zed] SVG plot opened in browser via HTML wrapper: $(html_path)\n"; color=:cyan)
         else
+            history_enabled() && _save_history(path, ext)
             if path != _LAST_OPENED_PATH[]
                 _LAST_OPENED_PATH[] = path
                 if _open_viewer(path)
