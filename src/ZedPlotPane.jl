@@ -1,9 +1,22 @@
 module ZedPlotPane
 
+using Dates
+using Preferences
+using Random
+
 export ZedDisplay,
     auto_init_enabled,
     disable_auto_init!,
     enable_auto_init!,
+    cache_dir,
+    set_cache_dir!,
+    history_enabled,
+    enable_history!,
+    disable_history!,
+    history_dir,
+    set_persistent_cache_dir!,
+    set_persistent_auto_init!,
+    set_persistent_history!,
     plot_path,
     setup_display!,
     register_display!,
@@ -15,6 +28,91 @@ export ZedDisplay,
     reset_plot_target!
 
 const CACHE_DIR = expanduser("~/.cache/zed-julia")
+const _CACHE_DIR = Ref{String}(@load_preference("cache_dir", CACHE_DIR))
+
+"""
+    cache_dir() -> String
+
+Return the directory where plot files and history are stored.
+"""
+cache_dir() = _CACHE_DIR[]
+
+"""
+    set_cache_dir!(path::AbstractString)
+
+Set the active runtime cache directory.
+"""
+function set_cache_dir!(path::AbstractString)
+    _CACHE_DIR[] = abspath(expanduser(path))
+    return _CACHE_DIR[]
+end
+
+const _HISTORY_ENABLED = Ref{Bool}(@load_preference("history", false))
+
+"""
+    history_enabled() -> Bool
+
+Check if saving plot history is enabled.
+"""
+history_enabled() = _HISTORY_ENABLED[]
+
+"""
+    enable_history!()
+
+Enable saving timestamped copies of plots to the history folder.
+"""
+enable_history!() = (_HISTORY_ENABLED[] = true)
+
+"""
+    disable_history!()
+
+Disable saving timestamped copies of plots to the history folder.
+"""
+disable_history!() = (_HISTORY_ENABLED[] = false)
+
+"""
+    history_dir() -> String
+
+Return the directory path where historical plots are saved.
+"""
+history_dir() = joinpath(cache_dir(), "history")
+
+"""
+    set_persistent_cache_dir!(path::AbstractString)
+
+Persistently set the `cache_dir` preference via `Preferences.jl`.
+"""
+function set_persistent_cache_dir!(path::AbstractString)
+    resolved = abspath(expanduser(path))
+    @set_preferences!("cache_dir" => resolved)
+    set_cache_dir!(resolved)
+    printstyled("[Zed] Persistent preference 'cache_dir' updated. Restart Julia for compile-time constants to take effect.\n"; color=:yellow)
+    return resolved
+end
+
+"""
+    set_persistent_auto_init!(enabled::Bool)
+
+Persistently set the `auto_init` preference via `Preferences.jl`.
+"""
+function set_persistent_auto_init!(enabled::Bool)
+    @set_preferences!("auto_init" => enabled)
+    enabled ? enable_auto_init!() : disable_auto_init!()
+    printstyled("[Zed] Persistent preference 'auto_init' updated. Restart Julia for compile-time constants to take effect.\n"; color=:yellow)
+    return enabled
+end
+
+"""
+    set_persistent_history!(enabled::Bool)
+
+Persistently set the `history` preference via `Preferences.jl`.
+"""
+function set_persistent_history!(enabled::Bool)
+    @set_preferences!("history" => enabled)
+    enabled ? enable_history!() : disable_history!()
+    printstyled("[Zed] Persistent preference 'history' updated. Restart Julia for compile-time constants to take effect.\n"; color=:yellow)
+    return enabled
+end
 
 const BLANK_PNG = UInt8[
     0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
@@ -39,7 +137,7 @@ const BLANK_GIF = UInt8[
 struct ZedDisplay <: AbstractDisplay end
 Base.displayable(::ZedDisplay, mime::MIME) = string(mime) in ("image/png", "image/jpeg", "image/gif", "text/html", "image/svg+xml")
 const _LAST_OPENED_PATH = Ref{String}("")
-const _AUTO_INIT = Ref(true)
+const _AUTO_INIT = Ref{Bool}(@load_preference("auto_init", true))
 const _CALLBACK_REGISTERED = Ref(false)
 const _PLOT_PREFIX = Ref{String}("current-plot")
 
@@ -73,15 +171,53 @@ function reset_plot_target!()
     return _PLOT_PREFIX[]
 end
 
-plot_path() = joinpath(CACHE_DIR, "$(_PLOT_PREFIX[]).png")
-plot_path(ext::AbstractString) = joinpath(CACHE_DIR, "$(_PLOT_PREFIX[]).$ext")
+plot_path() = joinpath(cache_dir(), "$(_PLOT_PREFIX[]).png")
+plot_path(ext::AbstractString) = joinpath(cache_dir(), "$(_PLOT_PREFIX[]).$ext")
 
 auto_init_enabled() = _AUTO_INIT[]
 enable_auto_init!() = (_AUTO_INIT[] = true)
 disable_auto_init!() = (_AUTO_INIT[] = false)
 
+function _save_history(path::AbstractString, ext::AbstractString)
+    try
+        hdir = history_dir()
+        isdir(hdir) || mkpath(hdir)
+        timestamp = Dates.format(Dates.now(), "yyyymmdd_HHMMSS_sss")
+        base_filename = "$(_PLOT_PREFIX[])_$(timestamp)"
+        hist_path = joinpath(hdir, "$(base_filename).$ext")
+
+        # Guard against filename collisions: the millisecond-resolution
+        # timestamp can repeat for rapid successive plots, which would
+        # otherwise silently overwrite a previous history entry. Append an
+        # incrementing counter, then a random suffix, before falling back to
+        # overwriting as a last resort.
+        if ispath(hist_path)
+            found = false
+            for i in 1:99
+                candidate = joinpath(hdir, "$(base_filename)_$(i).$ext")
+                if !ispath(candidate)
+                    hist_path = candidate
+                    found = true
+                    break
+                end
+            end
+            if !found
+                suffix = Random.randstring(8)
+                hist_path = joinpath(hdir, "$(base_filename)_$(suffix).$ext")
+            end
+        end
+
+        cp(path, hist_path; force=true)
+        return hist_path
+    catch err
+        @warn "Failed to save plot history" exception=(err, catch_backtrace())
+        return nothing
+    end
+end
+
 function _ensure_plot_files()
-    isdir(CACHE_DIR) || mkpath(CACHE_DIR)
+    cdir = cache_dir()
+    isdir(cdir) || mkpath(cdir)
     isfile(plot_path("png")) || write(plot_path("png"), BLANK_PNG)
     isfile(plot_path("svg")) || write(plot_path("svg"), BLANK_SVG)
     isfile(plot_path("html")) || write(plot_path("html"), BLANK_HTML)
@@ -228,6 +364,7 @@ function Base.display(::ZedDisplay, x)
             _is_interactive_html(html) || continue
             path = plot_path("html")
             write(path, html)
+            history_enabled() && _save_history(path, "html")
             _open_in_browser(path)
             printstyled("[Zed] dynamic plot opened in browser: $(path)\n"; color=:cyan)
             return
@@ -236,6 +373,7 @@ function Base.display(::ZedDisplay, x)
         ext = mime_to_ext(mime)
         path = plot_path(ext)
         _write_image(path, x, mime)
+        history_enabled() && _save_history(path, ext)
 
         if mime == MIME("image/svg+xml")
             svg_content = read(path, String)
@@ -376,7 +514,8 @@ Clear the plot pane by overwriting current plot files with blank content.
 This triggers Zed's file watcher to refresh the pane with an empty view.
 """
 function clear_pane()
-    isdir(CACHE_DIR) || mkpath(CACHE_DIR)
+    cdir = cache_dir()
+    isdir(cdir) || mkpath(cdir)
     write(plot_path("png"), BLANK_PNG)
     write(plot_path("svg"), BLANK_SVG)
     write(plot_path("html"), BLANK_HTML)

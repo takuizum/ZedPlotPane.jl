@@ -3,8 +3,10 @@ uuid = "1a2e9a1c-d784-4d3f-8c27-9f27d983cc09"
 authors = ["takuizum"]
 version = "0.1.2"
 
-[compat]
-julia = "1.10"
+[deps]
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+Preferences = "21216c6a-2e73-6563-6e65-726566657250"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 
 [weakdeps]
 PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
@@ -13,6 +15,10 @@ PythonCall = "6099a3de-0909-46bc-b1f4-468b9a2dfc0d"
 [extensions]
 PyCallExt = "PyCall"
 PythonCallExt = "PythonCall"
+
+[compat]
+Preferences = "1"
+julia = "1.10"
 
 [extras]
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"

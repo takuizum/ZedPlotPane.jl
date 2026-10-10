@@ -138,6 +138,41 @@ You can also open or switch targets directly:
 open_pane("figure2")
 ```
 
+## Plot History
+
+Save timestamped copies of your plots automatically (stored in `~/.cache/zed-julia/history/`):
+
+```julia
+using ZedPlotPane
+
+# Enable history tracking
+enable_history!()
+
+# Check history directory
+println(history_dir())
+
+# Disable history tracking
+disable_history!()
+```
+
+## Persistent Configuration
+
+Settings can be persisted across Julia sessions via `Preferences.jl`:
+
+```julia
+using ZedPlotPane
+
+# Persistently set the cache directory
+set_persistent_cache_dir!("~/my-project/plots")
+
+# Persistently configure auto-init
+set_persistent_auto_init!(false)
+
+# Persistently enable plot history by default
+set_persistent_history!(true)
+```
+
+
 
 
 ## Notes
